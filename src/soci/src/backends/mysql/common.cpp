@@ -6,8 +6,7 @@
 //
 
 #include "common.h"
-#include "soci/soci-backend.h"
-#include "soci-mktime.h"
+#include "soci-backend.h"
 #include <ciso646>
 #include <cstdlib>
 #include <cstring>
@@ -65,14 +64,22 @@ void soci::details::mysql::parse_std_tm(char const *buf, std::tm &t)
         second = parse10(p1, p2, errMsg);
     }
 
-    details::mktime_from_ymdhms(t, year, month, day, hour, minute, second);
+    t.tm_isdst = -1;
+    t.tm_year = year - 1900;
+    t.tm_mon  = month - 1;
+    t.tm_mday = day;
+    t.tm_hour = hour;
+    t.tm_min  = minute;
+    t.tm_sec  = second;
+
+    std::mktime(&t);
 }
 
-char * soci::details::mysql::quote(MYSQL * conn, const char *s, size_t len)
+char * soci::details::mysql::quote(MYSQL * conn, const char *s, int len)
 {
     char *retv = new char[2 * len + 3];
     retv[0] = '\'';
-    int len_esc = mysql_real_escape_string(conn, retv + 1, s, static_cast<unsigned long>(len));
+    int len_esc = mysql_real_escape_string(conn, retv + 1, s, len);
     retv[len_esc + 1] = '\'';
     retv[len_esc + 2] = '\0';
 

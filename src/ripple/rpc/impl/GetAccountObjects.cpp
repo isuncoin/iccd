@@ -18,7 +18,6 @@
 //==============================================================================
 
 #include <ripple/rpc/impl/GetAccountObjects.h>
-#include <ripple/app/main/Application.h>
 #include <ripple/protocol/Indexes.h>
 #include <ripple/protocol/JsonFields.h>
 
@@ -26,7 +25,7 @@ namespace ripple {
 namespace RPC {
 
 bool
-getAccountObjects (ReadView const& ledger, AccountID const& account,
+getAccountObjects (Ledger const& ledger, Account const& account,
     LedgerEntryType const type, uint256 dirIndex, uint256 const& entryIndex,
     std::uint32_t const limit, Json::Value& jvResult)
 {
@@ -39,8 +38,8 @@ getAccountObjects (ReadView const& ledger, AccountID const& account,
         found = true;
     }
 
-    auto dir = ledger.read({ltDIR_NODE, dirIndex});
-    if (! dir)
+    auto dir = ledger.getDirNode (dirIndex);
+    if (dir == nullptr)
         return false;
 
     std::uint32_t i = 0;
@@ -55,17 +54,17 @@ getAccountObjects (ReadView const& ledger, AccountID const& account,
             iter = std::find (iter, entries.end (), entryIndex);
             if (iter == entries.end ())
                 return false;
-
+            
             found = true;
         }
 
         for (; iter != entries.end (); ++iter)
         {
-            auto const sleNode = ledger.read(keylet::child(*iter));
+            auto const sleNode = ledger.getSLEi (*iter);
             if (type == ltINVALID || sleNode->getType () == type)
             {
                 jvObjects.append (sleNode->getJson (0));
-
+            
                 if (++i == limit)
                 {
                     if (++iter != entries.end ())
@@ -85,9 +84,9 @@ getAccountObjects (ReadView const& ledger, AccountID const& account,
         if (nodeIndex == 0)
             return true;
 
-        dirIndex = getDirNodeIndex (rootDirIndex, nodeIndex);
-        dir = ledger.read({ltDIR_NODE, dirIndex});
-        if (! dir)
+        dirIndex = getDirNodeIndex (rootDirIndex, nodeIndex);        
+        dir = ledger.getDirNode (dirIndex);
+        if (dir == nullptr)
             return true;
 
         if (i == limit)
@@ -99,7 +98,7 @@ getAccountObjects (ReadView const& ledger, AccountID const& account,
                 jvResult[jss::marker] = to_string (dirIndex) + ',' +
                     to_string (*e.begin ());
             }
-
+            
             return true;
         }
     }
@@ -107,3 +106,4 @@ getAccountObjects (ReadView const& ledger, AccountID const& account,
 
 } // RPC
 } // ripple
+

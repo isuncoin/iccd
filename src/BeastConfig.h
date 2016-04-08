@@ -106,6 +106,21 @@
 
 //------------------------------------------------------------------------------
 //
+// Boost
+//
+//------------------------------------------------------------------------------
+
+/** Config: BEAST_USE_BOOST_FEATURES
+    This activates boost specific features and improvements. If this is
+    turned on, the include paths for your build environment must be set
+    correctly to find the boost headers.
+*/
+#ifndef BEAST_USE_BOOST_FEATURES
+#define BEAST_USE_BOOST_FEATURES 1
+#endif
+
+//------------------------------------------------------------------------------
+//
 // Ripple
 //
 //------------------------------------------------------------------------------
@@ -149,6 +164,15 @@
 #define RIPPLE_USE_VALIDATORS 0
 #endif
 
+/** Config: BEAST_USE_BOOST_FEATURES
+    This activates boost specific features and improvements. If this is
+    turned on, the include paths for your build environment must be set
+    correctly to find the boost headers.
+*/
+#ifndef   BEAST_USE_BOOST_FEATURES
+//#define BEAST_USE_BOOST_FEATURES 1
+#endif
+
 /** Config: RIPPLE_PROPOSE_FEATURES
     This determines whether to add any features to the proposed transaction set.
 */
@@ -164,16 +188,18 @@
 #define RIPPLE_SINGLE_IO_SERVICE_THREAD 0
 #endif
 
+/** Config: RIPPLE_HOOK_VALIDATORS
+    Activates code for handling validations and validators (work in progress).
+*/
+#ifndef RIPPLE_HOOK_VALIDATORS
+#define RIPPLE_HOOK_VALIDATORS 0
+#endif
+
 /** Config: RIPPLE_ENABLE_TICKETS
     Enables processing of ticket transactions
 */
 #ifndef RIPPLE_ENABLE_TICKETS
 #define RIPPLE_ENABLE_TICKETS 0
-#endif
-
-// Uses OpenSSL instead of alternatives
-#ifndef RIPPLE_USE_OPENSSL
-#define RIPPLE_USE_OPENSSL 1
 #endif
 
 #endif

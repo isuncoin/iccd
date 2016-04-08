@@ -20,16 +20,8 @@
 #include <BeastConfig.h>
 #include <ripple/crypto/RandomNumbers.h>
 #include <ripple/json/json_value.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/basics/base_uint.h>
 
 namespace ripple {
-
-namespace RPC {
-struct Context;
-}
 
 // Result:
 // {

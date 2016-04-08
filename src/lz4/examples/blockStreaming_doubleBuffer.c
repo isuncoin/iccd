@@ -2,10 +2,7 @@
 // Copyright : Takayuki Matsuoka
 
 
-#ifdef _MSC_VER    /* Visual Studio */
-#  define _CRT_SECURE_NO_WARNINGS
-#  define snprintf sprintf_s
-#endif
+#define _CRT_SECURE_NO_WARNINGS // for MSVC
 #include "lz4.h"
 
 #include <stdio.h>
@@ -38,13 +35,11 @@ size_t read_bin(FILE* fp, void* array, size_t arrayBytes) {
 
 void test_compress(FILE* outFp, FILE* inpFp)
 {
-    LZ4_stream_t lz4Stream_body;
+    LZ4_stream_t lz4Stream_body = { 0 };
     LZ4_stream_t* lz4Stream = &lz4Stream_body;
 
     char inpBuf[2][BLOCK_BYTES];
     int  inpBufIndex = 0;
-    
-    LZ4_resetStream(lz4Stream);
 
     for(;;) {
         char* const inpPtr = inpBuf[inpBufIndex];
@@ -55,8 +50,8 @@ void test_compress(FILE* outFp, FILE* inpFp)
 
         {
             char cmpBuf[LZ4_COMPRESSBOUND(BLOCK_BYTES)];
-            const int cmpBytes = LZ4_compress_fast_continue(
-                lz4Stream, inpPtr, cmpBuf, inpBytes, sizeof(cmpBuf), 1);
+            const int cmpBytes = LZ4_compress_continue(
+                lz4Stream, inpPtr, cmpBuf, inpBytes);
             if(cmpBytes <= 0) {
                 break;
             }
@@ -73,13 +68,11 @@ void test_compress(FILE* outFp, FILE* inpFp)
 
 void test_decompress(FILE* outFp, FILE* inpFp)
 {
-    LZ4_streamDecode_t lz4StreamDecode_body;
+    LZ4_streamDecode_t lz4StreamDecode_body = { 0 };
     LZ4_streamDecode_t* lz4StreamDecode = &lz4StreamDecode_body;
 
     char decBuf[2][BLOCK_BYTES];
     int  decBufIndex = 0;
-
-    LZ4_setStreamDecode(lz4StreamDecode, NULL, 0);
 
     for(;;) {
         char cmpBuf[LZ4_COMPRESSBOUND(BLOCK_BYTES)];

@@ -31,7 +31,7 @@
 #include <ripple/nodestore/impl/EncodedBlob.h>
 #include <beast/threads/Thread.h>
 #include <atomic>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 namespace NodeStore {
@@ -115,11 +115,24 @@ public:
         options.create_if_missing = true;
         options.env = env;
 
-        if (keyValues.exists ("cache_mb"))
+        if (!keyValues.exists ("cache_mb"))
+        {
+            table_options.block_cache = rocksdb::NewLRUCache (getConfig ().getSize (siHashNodeDBCache) * 1024 * 1024);
+        }
+        else
+        {
             table_options.block_cache = rocksdb::NewLRUCache (get<int>(keyValues, "cache_mb") * 1024L * 1024L);
+        }
 
-        if (auto const v = get<int>(keyValues, "filter_bits"))
+        if (!keyValues.exists ("filter_bits"))
+        {
+            if (getConfig ().NODE_SIZE >= 2)
+                table_options.filter_policy.reset (rocksdb::NewBloomFilterPolicy (10));
+        }
+        else if (auto const v = get<int>(keyValues, "filter_bits"))
+        {
             table_options.filter_policy.reset (rocksdb::NewBloomFilterPolicy (v));
+        }
 
         get_if_exists (keyValues, "open_files", options.max_open_files);
 
@@ -196,7 +209,7 @@ public:
     }
 
     std::string
-    getName() override
+    getName()
     {
         return m_name;
     }
@@ -204,7 +217,7 @@ public:
     //--------------------------------------------------------------------------
 
     Status
-    fetch (void const* key, std::shared_ptr<NodeObject>* pObject) override
+    fetch (void const* key, NodeObject::Ptr* pObject)
     {
         pObject->reset ();
 
@@ -267,13 +280,13 @@ public:
     }
 
     void
-    store (std::shared_ptr<NodeObject> const& object) override
+    store (NodeObject::ref object)
     {
         m_batch.store (object);
     }
 
     void
-    storeBatch (Batch const& batch) override
+    storeBatch (Batch const& batch)
     {
         rocksdb::WriteBatch wb;
 
@@ -299,7 +312,7 @@ public:
     }
 
     void
-    for_each (std::function <void(std::shared_ptr<NodeObject>)> f) override
+    for_each (std::function <void(NodeObject::Ptr)> f)
     {
         rocksdb::ReadOptions const options;
 
@@ -321,8 +334,7 @@ public:
                 {
                     // Uh oh, corrupted data!
                     if (m_journal.fatal) m_journal.fatal <<
-                        "Corrupt NodeObject #" <<
-                        from_hex_text<uint256>(it->key ().data ());
+                        "Corrupt NodeObject #" << uint256 (it->key ().data ());
                 }
             }
             else
@@ -336,7 +348,7 @@ public:
     }
 
     int
-    getWriteLoad () override
+    getWriteLoad ()
     {
         return m_batch.getWriteLoad ();
     }
@@ -350,7 +362,7 @@ public:
     //--------------------------------------------------------------------------
 
     void
-    writeBatch (Batch const& batch) override
+    writeBatch (Batch const& batch)
     {
         storeBatch (batch);
     }

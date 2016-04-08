@@ -6,9 +6,9 @@
 //
 
 #define SOCI_SOURCE
-#include "soci/procedure.h"
-#include "soci/statement.h"
-#include "soci/prepare-temp-type.h"
+#include "procedure.h"
+#include "statement.h"
+#include "prepare-temp-type.h"
 
 using namespace soci;
 using namespace soci::details;

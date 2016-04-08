@@ -18,11 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/json/JsonPropertyStream.h>
-#include <ripple/json/json_value.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
 
 namespace ripple {
 
@@ -33,11 +28,11 @@ Json::Value doPrint (RPC::Context& context)
         && context.params[jss::params].isArray()
         && context.params[jss::params][0u].isString ())
     {
-        context.app.write (stream, context.params[jss::params][0u].asString());
+        getApp().write (stream, context.params[jss::params][0u].asString());
     }
     else
     {
-        context.app.write (stream);
+        getApp().write (stream);
     }
 
     return stream.top();

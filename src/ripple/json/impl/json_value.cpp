@@ -30,6 +30,34 @@ const Int Value::minInt = Int ( ~ (UInt (-1) / 2) );
 const Int Value::maxInt = Int ( UInt (-1) / 2 );
 const UInt Value::maxUInt = UInt (-1);
 
+// A "safe" implementation of strdup. Allow null pointer to be passed.
+// Also avoid warning on msvc80.
+//
+//inline char *safeStringDup( const char *czstring )
+//{
+//   if ( czstring )
+//   {
+//      const size_t length = (unsigned int)( strlen(czstring) + 1 );
+//      char *newString = static_cast<char *>( malloc( length ) );
+//      memcpy( newString, czstring, length );
+//      return newString;
+//   }
+//   return 0;
+//}
+//
+//inline char *safeStringDup( std::string const&str )
+//{
+//   if ( !str.empty() )
+//   {
+//      const size_t length = str.length();
+//      char *newString = static_cast<char *>( malloc( length + 1 ) );
+//      memcpy( newString, str.c_str(), length );
+//      newString[length] = 0;
+//      return newString;
+//   }
+//   return 0;
+//}
+
 ValueAllocator::~ValueAllocator ()
 {
 }
@@ -87,6 +115,18 @@ static struct DummyValueAllocatorInitializer
         valueAllocator ();     // ensure valueAllocator() statics are initialized before main().
     }
 } dummyValueAllocatorInitializer;
+
+
+
+// //////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////
+// ValueInternals...
+// //////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////
+# include <ripple/json/impl/json_valueiterator.inl>
+
 
 // //////////////////////////////////////////////////////////////////
 // //////////////////////////////////////////////////////////////////
@@ -403,61 +443,77 @@ Value::type () const
     return type_;
 }
 
-static
-int integerCmp (Int i, UInt ui)
+
+int
+Value::compare ( const Value& other )
 {
-    // All negative numbers are less than all unsigned numbers.
-    if (i < 0)
-        return -1;
+    /*
+    int typeDelta = other.type_ - type_;
+    switch ( type_ )
+    {
+    case nullValue:
 
-    // All unsigned numbers with bit 0 set are too big for signed integers.
-    if (ui & 0x8000)
-        return 1;
-
-    // Now we can safely compare.
-    return (i < ui) ? -1 : (i == ui) ? 0 : 1;
+       return other.type_ == type_;
+    case intValue:
+       if ( other.type_.isNumeric()
+    case uintValue:
+    case realValue:
+    case booleanValue:
+       break;
+    case stringValue,
+       break;
+    case arrayValue:
+       delete value_.array_;
+       break;
+    case objectValue:
+       delete value_.map_;
+    default:
+       JSON_ASSERT_UNREACHABLE;
+    }
+    */
+    return 0;  // unreachable
 }
 
-bool operator < (const Value& x, const Value& y)
+bool
+Value::operator < ( const Value& other ) const
 {
-    if (auto signum = x.type_ - y.type_)
-    {
-        if (x.type_ == intValue && y.type_ == uintValue)
-            signum = integerCmp (x.value_.int_, y.value_.uint_);
-        else if (x.type_ == uintValue && y.type_ == intValue)
-            signum = - integerCmp (y.value_.int_, x.value_.uint_);
-        return signum < 0;
-    }
+    int typeDelta = type_ - other.type_;
 
-    switch (x.type_)
+    if ( typeDelta )
+        return typeDelta < 0 ? true : false;
+
+    switch ( type_ )
     {
     case nullValue:
         return false;
 
     case intValue:
-        return x.value_.int_ < y.value_.int_;
+        return value_.int_ < other.value_.int_;
 
     case uintValue:
-        return x.value_.uint_ < y.value_.uint_;
+        return value_.uint_ < other.value_.uint_;
 
     case realValue:
-        return x.value_.real_ < y.value_.real_;
+        return value_.real_ < other.value_.real_;
 
     case booleanValue:
-        return x.value_.bool_ < y.value_.bool_;
+        return value_.bool_ < other.value_.bool_;
 
     case stringValue:
-        return (x.value_.string_ == 0  &&  y.value_.string_)
-               || (y.value_.string_ && x.value_.string_ &&
-                   strcmp (x.value_.string_, y.value_.string_) < 0);
+        return ( value_.string_ == 0  &&  other.value_.string_ )
+               || ( other.value_.string_
+                    &&  value_.string_
+                    && strcmp ( value_.string_, other.value_.string_ ) < 0 );
 
     case arrayValue:
     case objectValue:
     {
-        if (int signum = int (x.value_.map_->size ()) - y.value_.map_->size ())
-            return signum < 0;
+        int delta = int ( value_.map_->size () - other.value_.map_->size () );
 
-        return *x.value_.map_ < *y.value_.map_;
+        if ( delta )
+            return delta < 0;
+
+        return (*value_.map_) < (*other.value_.map_);
     }
 
     default:
@@ -467,49 +523,75 @@ bool operator < (const Value& x, const Value& y)
     return 0;  // unreachable
 }
 
-bool operator== (const Value& x, const Value& y)
+bool
+Value::operator <= ( const Value& other ) const
 {
-    if (x.type_ != y.type_)
-    {
-        if (x.type_ == intValue && y.type_ == uintValue)
-            return ! integerCmp (x.value_.int_, y.value_.uint_);
-        if (x.type_ == uintValue && y.type_ == intValue)
-            return ! integerCmp (y.value_.int_, x.value_.uint_);
-        return false;
-    }
+    return ! (other > *this);
+}
 
-    switch (x.type_)
+bool
+Value::operator >= ( const Value& other ) const
+{
+    return ! (*this < other);
+}
+
+bool
+Value::operator > ( const Value& other ) const
+{
+    return other < *this;
+}
+
+bool
+Value::operator == ( const Value& other ) const
+{
+    //if ( type_ != other.type_ )
+    // GCC 2.95.3 says:
+    // attempt to take address of bit-field structure member `Json::Value::type_'
+    // Beats me, but a temp solves the problem.
+    int temp = other.type_;
+
+    if ( type_ != temp )
+        return false;
+
+    switch ( type_ )
     {
     case nullValue:
         return true;
 
     case intValue:
-        return x.value_.int_ == y.value_.int_;
+        return value_.int_ == other.value_.int_;
 
     case uintValue:
-        return x.value_.uint_ == y.value_.uint_;
+        return value_.uint_ == other.value_.uint_;
 
     case realValue:
-        return x.value_.real_ == y.value_.real_;
+        return value_.real_ == other.value_.real_;
 
     case booleanValue:
-        return x.value_.bool_ == y.value_.bool_;
+        return value_.bool_ == other.value_.bool_;
 
     case stringValue:
-        return x.value_.string_ == y.value_.string_
-               || (y.value_.string_ && x.value_.string_ &&
-                    ! strcmp (x.value_.string_, y.value_.string_));
+        return ( value_.string_ == other.value_.string_ )
+               || ( other.value_.string_
+                    &&  value_.string_
+                    && strcmp ( value_.string_, other.value_.string_ ) == 0 );
 
     case arrayValue:
     case objectValue:
-        return x.value_.map_->size () == y.value_.map_->size ()
-               && *x.value_.map_ == *y.value_.map_;
+        return value_.map_->size () == other.value_.map_->size ()
+               && (*value_.map_) == (*other.value_.map_);
 
     default:
         JSON_ASSERT_UNREACHABLE;
     }
 
     return 0;  // unreachable
+}
+
+bool
+Value::operator != ( const Value& other ) const
+{
+    return ! ( *this == other );
 }
 
 const char*
@@ -782,19 +864,22 @@ Value::size () const
 }
 
 
-Value::operator bool () const
+bool
+Value::empty () const
 {
-    if (isNull ())
+    if ( isNull () || isArray () || isObject () )
+        return size () == 0u;
+    else
         return false;
-
-    if (isString ())
-    {
-        auto s = asCString();
-        return s && strlen(s);
-    }
-
-    return ! (isArray () || isObject ()) || size ();
 }
+
+
+bool
+Value::operator! () const
+{
+    return isNull ();
+}
+
 
 void
 Value::clear ()

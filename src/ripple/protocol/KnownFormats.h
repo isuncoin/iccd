@@ -21,7 +21,7 @@
 #define RIPPLE_PROTOCOL_KNOWNFORMATS_H_INCLUDED
 
 #include <ripple/protocol/SOTemplate.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 
@@ -78,8 +78,8 @@ public:
     };
 
 private:
-    using NameMap = std::map <std::string, Item*>;
-    using TypeMap = std::map <KeyType, Item*>;
+    typedef std::map <std::string, Item*> NameMap;
+    typedef std::map <KeyType, Item*> TypeMap;
 
 public:
     /** Create the known formats object.

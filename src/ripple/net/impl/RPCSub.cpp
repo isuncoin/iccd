@@ -34,7 +34,7 @@ class RPCSubImp
 public:
     RPCSubImp (InfoSub::Source& source, boost::asio::io_service& io_service,
         JobQueue& jobQueue, std::string const& strUrl, std::string const& strUsername,
-             std::string const& strPassword, Logs& logs)
+            std::string const& strPassword)
         : RPCSub (source)
         , m_io_service (io_service)
         , m_jobQueue (jobQueue)
@@ -43,8 +43,6 @@ public:
         , mUsername (strUsername)
         , mPassword (strPassword)
         , mSending (false)
-        , j_ (logs.journal ("RPCSub"))
-        , logs_ (logs)
     {
         std::string strScheme;
 
@@ -66,7 +64,7 @@ public:
         if (mPort < 0)
             mPort   = mSSL ? 443 : 80;
 
-        JLOG (j_.info) <<
+        WriteLog (lsINFO, RPCSub) <<
             "RPCCall::fromNetwork sub: ip=" << mIp <<
             " port=" << mPort <<
             " ssl= "<< (mSSL ? "yes" : "no") <<
@@ -84,12 +82,11 @@ public:
         if (mDeque.size () >= eventQueueMax)
         {
             // Drop the previous event.
-            JLOG (j_.warning) << "RPCCall::fromNetwork drop";
+            WriteLog (lsWARNING, RPCSub) << "RPCCall::fromNetwork drop";
             mDeque.pop_back ();
         }
 
-        auto& jm = broadcast ? j_.debug : j_.info;
-        JLOG (jm) <<
+        WriteLog (broadcast ? lsDEBUG : lsINFO, RPCSub) <<
             "RPCCall::fromNetwork push: " << jvObj;
 
         mDeque.push_back (std::make_pair (mSeq++, jvObj));
@@ -99,12 +96,10 @@ public:
             // Start a sending thread.
             mSending    = true;
 
-            JLOG (j_.info) << "RPCCall::fromNetwork start";
+            WriteLog (lsINFO, RPCSub) << "RPCCall::fromNetwork start";
 
             m_jobQueue.addJob (
-                jtCLIENT, "RPCSub::sendThread", [this] (Job&) {
-                    sendThread();
-                });
+                jtCLIENT, "RPCSub::sendThread", std::bind (&RPCSubImp::sendThread, this));
         }
     }
 
@@ -159,7 +154,7 @@ private:
                 // XXX Might not need this in a try.
                 try
                 {
-                    JLOG (j_.info) << "RPCCall::fromNetwork: " << mIp;
+                    WriteLog (lsINFO, RPCSub) << "RPCCall::fromNetwork: " << mIp;
 
                     RPCCall::fromNetwork (
                         m_io_service,
@@ -167,13 +162,11 @@ private:
                         mUsername, mPassword,
                         mPath, "event",
                         jvEvent,
-                        mSSL,
-                        true,
-                        logs_);
+                        mSSL);
                 }
                 catch (const std::exception& e)
                 {
-                    JLOG (j_.info) << "RPCCall::fromNetwork exception: " << e.what ();
+                    WriteLog (lsINFO, RPCSub) << "RPCCall::fromNetwork exception: " << e.what ();
                 }
             }
         }
@@ -181,6 +174,7 @@ private:
     }
 
 private:
+// VFALCO TODO replace this macro with a language constant
     enum
     {
         eventQueueMax = 32
@@ -202,9 +196,6 @@ private:
     bool                    mSending;                   // Sending threead is active.
 
     std::deque<std::pair<int, Json::Value> >    mDeque;
-
-    beast::Journal j_;
-    Logs& logs_;
 };
 
 //------------------------------------------------------------------------------
@@ -214,15 +205,14 @@ RPCSub::RPCSub (InfoSub::Source& source)
 {
 }
 
-std::shared_ptr<RPCSub> make_RPCSub (
-    InfoSub::Source& source, boost::asio::io_service& io_service,
-    JobQueue& jobQueue, std::string const& strUrl,
-    std::string const& strUsername, std::string const& strPassword,
-    Logs& logs)
+RPCSub::pointer RPCSub::New (InfoSub::Source& source,
+    boost::asio::io_service& io_service, JobQueue& jobQueue,
+        std::string const& strUrl, std::string const& strUsername,
+        std::string const& strPassword)
 {
-    return std::make_shared<RPCSubImp> (std::ref (source),
+    return std::make_shared <RPCSubImp> (std::ref (source),
         std::ref (io_service), std::ref (jobQueue),
-            strUrl, strUsername, strPassword, logs);
+            strUrl, strUsername, strPassword);
 }
 
 } // ripple

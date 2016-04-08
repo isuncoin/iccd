@@ -42,9 +42,9 @@ namespace beast {
     {
         void foo();
 
-        // This is a neat way of declaring a using Ptr = for a pointer class,
+        // This is a neat way of declaring a typedef for a pointer class,
         // rather than typing out the full templated name each time..
-        using Ptr = SharedPtr<MyClass>;
+        typedef SharedPtr<MyClass> Ptr;
     };
 
     MyClass::Ptr p = new MyClass();

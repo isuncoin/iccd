@@ -32,7 +32,7 @@ namespace PeerFinder {
 class Slot
 {
 public:
-    using ptr = std::shared_ptr <Slot>;
+    typedef std::shared_ptr <Slot> ptr;
 
     enum State
     {

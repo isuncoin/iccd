@@ -18,21 +18,19 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/overlay/Cluster.h>
 #include <ripple/overlay/impl/ConnectAttempt.h>
 #include <ripple/overlay/impl/PeerImp.h>
 #include <ripple/overlay/impl/Tuning.h>
 #include <ripple/json/json_reader.h>
-
+    
 namespace ripple {
 
-ConnectAttempt::ConnectAttempt (Application& app, boost::asio::io_service& io_service,
+ConnectAttempt::ConnectAttempt (boost::asio::io_service& io_service,
     endpoint_type const& remote_endpoint, Resource::Consumer usage,
         beast::asio::ssl_bundle::shared_context const& context,
             std::uint32_t id, PeerFinder::Slot::ptr const& slot,
                 beast::Journal journal, OverlayImpl& overlay)
     : Child (overlay)
-    , app_ (app)
     , id_ (id)
     , sink_ (journal, OverlayImpl::makePrefix(id))
     , journal_ (sink_)
@@ -190,7 +188,7 @@ ConnectAttempt::onConnect (error_code ec)
 }
 
 void
-ConnectAttempt::onHandshake (error_code ec)
+ ConnectAttempt::onHandshake (error_code ec)
 {
     cancelTimer();
     if(! stream_.next_layer().is_open())
@@ -219,11 +217,7 @@ ConnectAttempt::onHandshake (error_code ec)
     beast::http::message req = makeRequest(
         ! overlay_.peerFinder().config().peerPrivate,
             remote_endpoint_.address());
-    auto const hello = buildHello (
-        sharedValue,
-        overlay_.setup().public_ip,
-        beast::IPAddressConversion::from_asio(remote_endpoint_),
-        app_);
+    auto const hello = buildHello (sharedValue, getApp());
     appendHello (req, hello);
 
     using beast::http::write;
@@ -404,10 +398,7 @@ ConnectAttempt::processResponse (beast::http::message const& m,
 
     RippleAddress publicKey;
     std::tie(publicKey, success) = verifyHello (hello,
-        sharedValue,
-        overlay_.setup().public_ip,
-        beast::IPAddressConversion::from_asio(remote_endpoint_),
-        journal_, app_);
+        sharedValue, journal_, getApp());
     if(! success)
         return close(); // verifyHello logs
     if(journal_.info) journal_.info <<
@@ -418,17 +409,19 @@ ConnectAttempt::processResponse (beast::http::message const& m,
     if(journal_.info) journal_.info <<
         "Protocol: " << to_string(protocol);
 
-    auto member = app_.cluster().member(publicKey);
-    if (member)
+    std::string name;
+    bool const clusterNode =
+        getApp().getUNL().nodeInCluster(publicKey, name);
+    if (clusterNode)
         if (journal_.info) journal_.info <<
-            "Cluster name: " << *member;
+            "Cluster name: " << name;
 
     auto const result = overlay_.peerFinder().activate (slot_,
-        publicKey.toPublicKey(), static_cast<bool>(member));
+        publicKey.toPublicKey(), clusterNode);
     if (result != PeerFinder::Result::success)
         return fail("Outbound slots full");
 
-    auto const peer = std::make_shared<PeerImp>(app_,
+    auto const peer = std::make_shared<PeerImp>(
         std::move(ssl_bundle_), read_buf_.data(),
             std::move(slot_), std::move(response_),
                 usage_, std::move(hello), publicKey, id_, overlay_);

@@ -42,9 +42,9 @@ class CharPointer_UTF16
 {
 public:
    #if BEAST_NATIVE_WCHAR_IS_UTF16
-    using CharType = wchar_t;
+    typedef wchar_t CharType;
    #else
-    using CharType = std::int16_t;
+    typedef std::int16_t CharType;
    #endif
 
     inline explicit CharPointer_UTF16 (const CharType* const rawPointer) noexcept

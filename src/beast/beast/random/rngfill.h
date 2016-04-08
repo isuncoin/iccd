@@ -23,7 +23,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 
 namespace beast {
 

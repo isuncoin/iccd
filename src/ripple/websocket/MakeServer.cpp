@@ -32,7 +32,7 @@ std::unique_ptr<beast::Stoppable> makeServer (ServerDescription const& desc)
     if (version.empty())
         version = WebSocket02::versionName();
 
-    JLOG (desc.app.journal("WebSocket").warning) << "Websocket version " << version;
+    WriteLog (lsWARNING, WebSocket) << "Websocket version " << version;
     if (version == WebSocket02::versionName())
         return makeServer02 (desc);
     assert (version == "04");

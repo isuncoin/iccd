@@ -20,9 +20,8 @@
 #ifndef RIPPLE_APP_MISC_AMENDMENTTABLE_H_INCLUDED
 #define RIPPLE_APP_MISC_AMENDMENTTABLE_H_INCLUDED
 
-#include <ripple/app/ledger/Ledger.h>
+#include <ripple/app/book/Types.h>
 #include <ripple/app/misc/Validations.h>
-#include <ripple/protocol/Protocol.h>
 
 namespace ripple {
 
@@ -38,21 +37,13 @@ public:
     {
         ;
     }
-
     void addVoter ()
     {
         ++mTrustedValidations;
     }
-
     void addVote (uint256 const& amendment)
     {
         ++mVotes[amendment];
-    }
-
-    int count (uint256 const& amendment)
-    {
-        auto const& it = mVotes.find (amendment);
-        return (it == mVotes.end()) ? 0 : it->second;
     }
 };
 
@@ -110,6 +101,11 @@ public:
     bool mSupported{false};
     bool mDefault{false};  // Include in genesis ledger
 
+    core::Clock::time_point
+        m_firstMajority{0};  // First time we saw a majority (close time)
+    core::Clock::time_point
+        m_lastMajority{0};  // Most recent time we saw a majority (close time)
+
     std::string mFriendlyName;
 
     AmendmentState () = default;
@@ -149,7 +145,6 @@ public:
 };
 
 class Section;
-
 
 /** The amendment table stores the list of enabled and potential amendments.
     Individuals amendments are voted on by validators during the consensus
@@ -201,104 +196,27 @@ public:
     */
     virtual void setSupported (const std::vector<uint256>& amendments) = 0;
 
+    /** Update the walletDB with the majority times.
+     */
+    virtual void reportValidations (const AmendmentSet&) = 0;
+
     virtual Json::Value getJson (int) = 0;
 
     /** Returns a Json::objectValue. */
     virtual Json::Value getJson (uint256 const& ) = 0;
 
-    /** Called when a new fully-validated ledger is accepted. */
-    void doValidatedLedger (std::shared_ptr<ReadView const> const& lastValidatedLedger)
-    {
-        if (needValidatedLedger (lastValidatedLedger->seq ()))
-            doValidatedLedger (lastValidatedLedger->seq (),
-                getEnabledAmendments (*lastValidatedLedger));
-    }
-
-    /** Called to determine whether the amendment logic needs to process
-        a new validated ledger. (If it could have changed things.)
-    */
-    virtual bool
-    needValidatedLedger (LedgerIndex seq) = 0;
-
     virtual void
-    doValidatedLedger (LedgerIndex ledgerSeq, enabledAmendments_t enabled) = 0;
-
-    // Called by the consensus code when we need to
-    // inject pseudo-transactions
-    virtual std::map <uint256, std::uint32_t>
-    doVoting (
-        std::uint32_t closeTime,
-        enabledAmendments_t const& enabledAmendments,
-        majorityAmendments_t const& majorityAmendments,
-        ValidationSet const& valSet) = 0;
-
-    // Called by the consensus code when we need to
-    // add feature entries to a validation
-    virtual std::vector <uint256>
-    doValidation (enabledAmendments_t const&) = 0;
-
-
-    // The two function below adapt the API callers expect to the
-    // internal amendment table API. This allows the amendment
-    // table implementation to be independent of the ledger
-    // implementation. These APIs will merge when the view code
-    // supports a full ledger API
-
-    void
-    doValidation (std::shared_ptr <ReadView const> const& lastClosedLedger,
-        STObject& baseValidation)
-    {
-        auto ourAmendments =
-            doValidation (getEnabledAmendments(*lastClosedLedger));
-        if (! ourAmendments.empty())
-            baseValidation.setFieldV256 (sfAmendments,
-               STVector256 (sfAmendments, ourAmendments));
-    }
-
-
-    void
-    doVoting (
-        std::shared_ptr <ReadView const> const& lastClosedLedger,
-        ValidationSet const& parentValidations,
-        std::shared_ptr<SHAMap> const& initialPosition)
-    {
-        // Ask implementation what to do
-        auto actions = doVoting (
-            lastClosedLedger->parentCloseTime(),
-            getEnabledAmendments(*lastClosedLedger),
-            getMajorityAmendments(*lastClosedLedger),
-            parentValidations);
-
-        // Inject appropriate pseudo-transactions
-        for (auto const& it : actions)
-        {
-            STTx trans (ttAMENDMENT);
-            trans.setAccountID (sfAccount, AccountID());
-            trans.setFieldH256 (sfAmendment, it.first);
-            trans.setFieldU32 (sfLedgerSequence, lastClosedLedger->seq() + 1);
-
-            if (it.second != 0)
-                trans.setFieldU32 (sfFlags, it.second);
-
-            Serializer s;
-            trans.add (s);
-
-        #if ! RIPPLE_PROPOSE_AMENDMENTS
-            return;
-        #endif
-
-            uint256 txID = trans.getTransactionID();
-            auto tItem = std::make_shared <SHAMapItem> (txID, s.peekData());
-            initialPosition->addGiveItem (tItem, true, false);
-        }
-    }
-
+    doValidation (Ledger::ref lastClosedLedger, STObject& baseValidation) = 0;
+    virtual void
+    doVoting (Ledger::ref lastClosedLedger,
+              std::shared_ptr<SHAMap> const& initialPosition) = 0;
 };
 
 std::unique_ptr<AmendmentTable> make_AmendmentTable (
     std::chrono::seconds majorityTime,
     int majorityFraction,
-    beast::Journal journal);
+    beast::Journal journal,
+    bool useMockFacade = false);
 
 }  // ripple
 

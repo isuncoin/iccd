@@ -21,7 +21,6 @@
 #define RIPPLE_APP_LEDGER_LEDGERHISTORY_H_INCLUDED
 
 #include <ripple/app/ledger/Ledger.h>
-#include <ripple/app/main/Application.h>
 #include <ripple/protocol/RippleLedgerHash.h>
 #include <beast/insight/Collector.h>
 #include <beast/insight/Event.h>
@@ -34,8 +33,8 @@ namespace ripple {
 class LedgerHistory
 {
 public:
-    LedgerHistory (beast::insight::Collector::ptr const& collector,
-        Application& app);
+    explicit
+    LedgerHistory (beast::insight::Collector::ptr const& collector);
 
     /** Track a ledger
         @return `true` if the ledger was already tracked
@@ -107,11 +106,10 @@ private:
     */
     void handleMismatch (LedgerHash const& built, LedgerHash const& valid);
 
-    Application& app_;
     beast::insight::Collector::ptr collector_;
     beast::insight::Counter mismatch_counter_;
 
-    using LedgersByHash = TaggedCache <LedgerHash, Ledger>;
+    typedef TaggedCache <LedgerHash, Ledger> LedgersByHash;
 
     LedgersByHash m_ledgers_by_hash;
 
@@ -119,15 +117,13 @@ private:
     // For debug and logging purposes
     // 1) The hash of a ledger with that index we build
     // 2) The hash of a ledger with that index we validated
-    using ConsensusValidated = TaggedCache <LedgerIndex,
-        std::pair< LedgerHash, LedgerHash >>;
+    typedef TaggedCache <LedgerIndex,
+        std::pair< LedgerHash, LedgerHash >> ConsensusValidated;
     ConsensusValidated m_consensus_validated;
 
 
     // Maps ledger indexes to the corresponding hash.
     std::map <LedgerIndex, LedgerHash> mLedgersByIndex; // validated ledgers
-
-    beast::Journal j_;
 };
 
 } // ripple

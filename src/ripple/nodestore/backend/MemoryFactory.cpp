@@ -21,8 +21,8 @@
 #include <ripple/nodestore/Factory.h>
 #include <ripple/nodestore/Manager.h>
 #include <beast/utility/ci_char_traits.h>
+#include <beast/cxx14/memory.h> // <memory>
 #include <map>
-#include <memory>
 #include <mutex>
 
 namespace ripple {
@@ -32,7 +32,7 @@ struct MemoryDB
 {
     std::mutex mutex;
     bool open = false;
-    std::map <uint256 const, std::shared_ptr<NodeObject>> table;
+    std::map <uint256 const, NodeObject::Ptr> table;
 };
 
 class MemoryFactory : public Factory
@@ -75,7 +75,7 @@ static MemoryFactory memoryFactory;
 class MemoryBackend : public Backend
 {
 private:
-    using Map = std::map <uint256 const, std::shared_ptr<NodeObject>>;
+    using Map = std::map <uint256 const, NodeObject::Ptr>;
 
     std::string name_;
     beast::Journal journal_;
@@ -98,7 +98,7 @@ public:
     }
 
     std::string
-    getName () override
+    getName ()
     {
         return name_;
     }
@@ -112,7 +112,7 @@ public:
     //--------------------------------------------------------------------------
 
     Status
-    fetch (void const* key, std::shared_ptr<NodeObject>* pObject) override
+    fetch (void const* key, NodeObject::Ptr* pObject)
     {
         uint256 const hash (uint256::fromVoid (key));
 
@@ -142,28 +142,28 @@ public:
     }
 
     void
-    store (std::shared_ptr<NodeObject> const& object) override
+    store (NodeObject::ref object)
     {
         std::lock_guard<std::mutex> _(db_->mutex);
         db_->table.emplace (object->getHash(), object);
     }
 
     void
-    storeBatch (Batch const& batch) override
+    storeBatch (Batch const& batch)
     {
         for (auto const& e : batch)
             store (e);
     }
 
     void
-    for_each (std::function <void(std::shared_ptr<NodeObject>)> f) override
+    for_each (std::function <void(NodeObject::Ptr)> f)
     {
         for (auto const& e : db_->table)
             f (e.second);
     }
 
     int
-    getWriteLoad() override
+    getWriteLoad()
     {
         return 0;
     }

@@ -32,7 +32,7 @@ namespace path {
 // --> node.saRevDeliver: Do not exceed.
 
 TER PathCursor::deliverNodeForward (
-    AccountID const& uInAccountID,    // --> Input owner's account.
+    Account const& uInAccountID,    // --> Input owner's account.
     STAmount const& saInReq,        // --> Amount to deliver.
     STAmount& saInAct,              // <-- Amount delivered, this invocation.
     STAmount& saInFees) const       // <-- Fees charged, this invocation.
@@ -47,19 +47,15 @@ TER PathCursor::deliverNodeForward (
     saInFees.clear (saInReq);
 
     int loopCount = 0;
-    auto viewJ = rippleCalc_.logs_.journal ("View");
 
     // XXX Perhaps make sure do not exceed node().saRevDeliver as another way to
     // stop?
     while (resultCode == tesSUCCESS && saInAct + saInFees < saInReq)
     {
         // Did not spend all inbound deliver funds.
-        if (++loopCount >
-            (multiQuality_ ?
-                CALC_NODE_DELIVER_MAX_LOOPS_MQ :
-                CALC_NODE_DELIVER_MAX_LOOPS))
+        if (++loopCount > CALC_NODE_DELIVER_MAX_LOOPS)
         {
-            JLOG (j_.warning)
+            WriteLog (lsWARNING, RippleCalc)
                 << "deliverNodeForward: max loops cndf";
             return telFAILED_PROCESSING;
         }
@@ -75,19 +71,19 @@ TER PathCursor::deliverNodeForward (
         }
         else if (!node().offerIndex_)
         {
-            JLOG (j_.warning)
+            WriteLog (lsWARNING, RippleCalc)
                 << "deliverNodeForward: INTERNAL ERROR: Ran out of offers.";
             return telFAILED_PROCESSING;
         }
         else if (resultCode == tesSUCCESS)
         {
             // Doesn't charge input. Input funds are in limbo.
-            // There's no fee if we're transferring XRP, if the sender is the
+            // There's no fee if we're transferring ICC, if the sender is the
             // issuer, or if the receiver is the issuer.
-            bool noFee = isXRP (previousNode().issue_)
+            bool noFee = isICC (previousNode().issue_)
                 || uInAccountID == previousNode().issue_.account
                 || node().offerOwnerAccount_ == previousNode().issue_.account;
-            const STAmount saInFeeRate = noFee ? STAmount::saOne
+            const STAmount saInFeeRate = noFee ? saOne
                 : previousNode().transferRate_;  // Transfer rate of issuer.
 
             // First calculate assuming no output fees: saInPassAct,
@@ -138,7 +134,7 @@ TER PathCursor::deliverNodeForward (
             // Will be determined by adjusted saInPassAct.
             STAmount saInPassFees;
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeForward:"
                 << " nodeIndex_=" << nodeIndex_
                 << " saOutFunded=" << saOutFunded
@@ -157,7 +153,7 @@ TER PathCursor::deliverNodeForward (
             // FIXME: We remove an offer if WE didn't want anything out of it?
             if (!node().saTakerPays || saInSum <= zero)
             {
-                JLOG (j_.debug)
+                WriteLog (lsDEBUG, RippleCalc)
                     << "deliverNodeForward: Microscopic offer unfunded.";
 
                 // After math offer is effectively unfunded.
@@ -169,7 +165,7 @@ TER PathCursor::deliverNodeForward (
             if (!saInFunded)
             {
                 // Previous check should catch this.
-                JLOG (j_.warning)
+                WriteLog (lsWARNING, RippleCalc)
                     << "deliverNodeForward: UNREACHABLE REACHED";
 
                 // After math offer is effectively unfunded.
@@ -178,17 +174,17 @@ TER PathCursor::deliverNodeForward (
                 continue;
             }
 
-            if (!isXRP(nextNode().account_))
+            if (!isICC(nextNode().account_))
             {
                 // ? --> OFFER --> account
                 // Input fees: vary based upon the consumed offer's owner.
-                // Output fees: none as XRP or the destination account is the
+                // Output fees: none as ICC or the destination account is the
                 // issuer.
 
                 saOutPassAct = saOutPassMax;
                 saInPassFees = saInPassFeesMax;
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "deliverNodeForward: ? --> OFFER --> account:"
                     << " offerOwnerAccount_="
                     << node().offerOwnerAccount_
@@ -197,12 +193,12 @@ TER PathCursor::deliverNodeForward (
                     << " saOutPassAct=" << saOutPassAct
                     << " saOutFunded=" << saOutFunded;
 
-                // Output: Debit offer owner, send XRP or non-XPR to next
+                // Output: Debit offer owner, send ICC or non-XPR to next
                 // account.
-                resultCode = accountSend(view(),
+                resultCode = ledger().accountSend (
                     node().offerOwnerAccount_,
                     nextNode().account_,
-                    saOutPassAct, viewJ);
+                    saOutPassAct);
 
                 if (resultCode != tesSUCCESS)
                     break;
@@ -253,22 +249,21 @@ TER PathCursor::deliverNodeForward (
                 // Do outbound debiting.
                 // Send to issuer/limbo total amount including fees (issuer gets
                 // fees).
-                auto const& id = isXRP(node().issue_) ?
-                        xrpAccount() : node().issue_.account;
+                auto const& id = isICC(node().issue_) ?
+                        iccAccount() : node().issue_.account;
                 auto outPassTotal = saOutPassAct + saOutPassFees;
-                accountSend(view(),
+                ledger().accountSend (
                     node().offerOwnerAccount_,
                     id,
-                    outPassTotal,
-                    viewJ);
+                    outPassTotal);
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "deliverNodeForward: ? --> OFFER --> offer:"
                     << " saOutPassAct=" << saOutPassAct
                     << " saOutPassFees=" << saOutPassFees;
             }
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeForward: "
                 << " nodeIndex_=" << nodeIndex_
                 << " node().saTakerGets=" << node().saTakerGets
@@ -286,16 +281,15 @@ TER PathCursor::deliverNodeForward (
             // Credit offer owner from in issuer/limbo (input transfer fees left
             // with owner).  Don't attempt to have someone credit themselves, it
             // is redundant.
-            if (isXRP (previousNode().issue_.currency)
+            if (isICC (previousNode().issue_.currency)
                 || uInAccountID != node().offerOwnerAccount_)
             {
-                auto id = !isXRP(previousNode().issue_.currency) ?
-                        uInAccountID : xrpAccount();
-                resultCode = accountSend(view(),
+                auto id = !isICC(previousNode().issue_.currency) ?
+                        uInAccountID : iccAccount();
+                resultCode = ledger().accountSend (
                     id,
                     node().offerOwnerAccount_,
-                    saInPassAct,
-                    viewJ);
+                    saInPassAct);
 
                 if (resultCode != tesSUCCESS)
                     break;
@@ -310,7 +304,7 @@ TER PathCursor::deliverNodeForward (
 
             if (saTakerPaysNew < zero || saTakerGetsNew < zero)
             {
-                JLOG (j_.warning)
+                WriteLog (lsWARNING, RippleCalc)
                     << "deliverNodeForward: NEGATIVE:"
                     << " saTakerPaysNew=" << saTakerPaysNew
                     << " saTakerGetsNew=" << saTakerGetsNew;
@@ -322,13 +316,13 @@ TER PathCursor::deliverNodeForward (
             node().sleOffer->setFieldAmount (sfTakerGets, saTakerGetsNew);
             node().sleOffer->setFieldAmount (sfTakerPays, saTakerPaysNew);
 
-            view().update (node().sleOffer);
+            ledger().entryModify (node().sleOffer);
 
             if (saOutPassAct == saOutFunded || saTakerGetsNew == zero)
             {
                 // Offer became unfunded.
 
-                JLOG (j_.debug)
+                WriteLog (lsDEBUG, RippleCalc)
                     << "deliverNodeForward: unfunded:"
                     << " saOutPassAct=" << saOutPassAct
                     << " saOutFunded=" << saOutFunded;
@@ -355,7 +349,7 @@ TER PathCursor::deliverNodeForward (
         }
     }
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "deliverNodeForward<"
         << " nodeIndex_=" << nodeIndex_
         << " saInAct=" << saInAct

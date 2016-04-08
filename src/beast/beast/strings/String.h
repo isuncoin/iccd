@@ -49,11 +49,11 @@
 namespace beast {
 
 #if BEAST_NATIVE_WCHAR_IS_UTF8
- using CharPointer_wchar_t = CharPointer_UTF8;
+ typedef CharPointer_UTF8          CharPointer_wchar_t;
 #elif BEAST_NATIVE_WCHAR_IS_UTF16
- using CharPointer_wchar_t = CharPointer_UTF16;
+ typedef CharPointer_UTF16         CharPointer_wchar_t;
 #else
- using CharPointer_wchar_t = CharPointer_UTF32;
+ typedef CharPointer_UTF32         CharPointer_wchar_t;
 #endif
 
 //==============================================================================
@@ -186,7 +186,7 @@ public:
     static const String empty;
 
     /** This is the character encoding type used internally to store the string. */
-    using CharPointerType = StringCharPointerType;
+    typedef StringCharPointerType CharPointerType;
 
     //==============================================================================
     /** Generates a probably-unique 32-bit hashcode from this string. */
@@ -1201,6 +1201,15 @@ public:
 
     //==============================================================================
    #if BEAST_MAC || BEAST_IOS || DOXYGEN
+    /** MAC ONLY - Creates a String from an OSX CFString. */
+    static String fromCFString (CFStringRef cfString);
+
+    /** MAC ONLY - Converts this string to a CFString.
+        Remember that you must use CFRelease() to free the returned string when you're
+        finished with it.
+    */
+    CFStringRef toCFString() const;
+
     /** MAC ONLY - Returns a copy of this string in which any decomposed unicode characters have
         been converted to their precomposed equivalents. */
     String convertToPrecomposedUnicode() const;

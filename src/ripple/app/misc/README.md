@@ -1,7 +1,7 @@
 # Fee Voting
 
 The Ripple payment protocol enforces a fee schedule expressed in units of the
-native currency, XRP. Fees for transactions are paid directly from the account
+native currency, ICC. Fees for transactions are paid directly from the account
 owner. There are also reserve requirements for each item that occupies storage
 in the ledger. The reserve fee schedule contains both a per-account reserve,
 and a per-owned-item reserve. The items an account may own include active
@@ -10,7 +10,7 @@ offers, trust lines, and tickets.
 Validators may vote to increase fees if they feel that the network is charging
 too little. They may also vote to decrease fees if the fees are too costly
 relative to the value the network provides. One common case where a validator
-may want to change fees is when the value of the native currency XRP fluctuates
+may want to change fees is when the value of the native currency ICC fluctuates
 relative to other currencies.
 
 The fee voting mechanism takes place every 256 ledgers ("voting ledgers"). In
@@ -89,22 +89,6 @@ Nodes may veto Amendments they consider undesirable by never announcing their
 support for those Amendments. Just a few nodes vetoing an Amendment will normally 
 keep it from being accepted. Nodes could also vote yes on an Amendments even 
 before it obtains a super-majority. This might make sense for a critical bug fix.
-
-Validators that support an amendment that is not yet enabled announce their
-support in their validations. If 80% support is achieved, they will introduce
-a pseudo-transaction to track the amendment's majority status in the ledger.
-
-If an amendment whose majority status is reported in a ledger loses that
-majority status, validators will introduce pseudo-transactions to remove
-the majority status from the ledger.
-
-If an amendment holds majority status for two weeks, validators will
-introduce a pseudo-transaction to enable the amendment.
-
-All amednements are assumed to be critical and irreversible. Thus there
-is no mechanism to disable or revoke an amendment, nor is there a way
-for a server to operate while an amendment it does not understand is
-enabled.
 
 ---
 

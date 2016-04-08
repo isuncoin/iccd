@@ -20,12 +20,12 @@
 #include <BeastConfig.h>
 #include <ripple/nodestore/impl/EncodedBlob.h>
 #include <beast/ByteOrder.h>
-
+    
 namespace ripple {
 namespace NodeStore {
 
 void
-EncodedBlob::prepare (std::shared_ptr<NodeObject> const& object)
+EncodedBlob::prepare (NodeObject::Ptr const& object)
 {
     m_key = object->getHash().begin ();
 

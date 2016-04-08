@@ -20,9 +20,9 @@
 #ifndef RIPPLE_PROTOCOL_SIGN_H_INCLUDED
 #define RIPPLE_PROTOCOL_SIGN_H_INCLUDED
 
+#include <ripple/protocol/AnyPublicKey.h>
+#include <ripple/protocol/AnySecretKey.h>
 #include <ripple/protocol/HashPrefix.h>
-#include <ripple/protocol/PublicKey.h>
-#include <ripple/protocol/SecretKey.h>
 #include <ripple/protocol/STObject.h>
 #include <utility>
 
@@ -35,7 +35,7 @@ namespace ripple {
 void
 sign (STObject& st,
     HashPrefix const& prefix,
-        KeyType type, SecretKey const& sk);
+        AnySecretKey const& sk);
 
 /** Verify the signature on a STObject.
     The signature must be contained in sfSignature.
@@ -43,33 +43,7 @@ sign (STObject& st,
 bool
 verify (STObject const& st,
     HashPrefix const& prefix,
-        PublicKey const& pk,
-            bool mustBeFullyCanonical);
-
-/** Return a Serializer suitable for computing a multisigning TxnSignature. */
-Serializer
-buildMultiSigningData (STObject const& obj, AccountID const& signingID);
-
-/** Break the multi-signing hash computation into 2 parts for optimization.
-
-    We can optimize verifying multiple multisignatures by splitting the
-    data building into two parts;
-     o A large part that is shared by all of the computations.
-     o A small part that is unique to each signer in the multisignature.
-
-    The following methods support that optimization:
-     1. startMultiSigningData provides the large part which can be shared.
-     2. finishMuiltiSigningData caps the passed in serializer with each
-        signer's unique data.
-*/
-Serializer
-startMultiSigningData (STObject const& obj);
-
-inline void
-finishMultiSigningData (AccountID const& signingID, Serializer& s)
-{
-    s.add160 (signingID);
-}
+        AnyPublicKeySlice const& pk);
 
 } // ripple
 

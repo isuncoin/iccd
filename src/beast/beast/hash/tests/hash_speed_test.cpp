@@ -54,7 +54,7 @@ public:
         {
             rngfill (key, g);
             Hasher h;
-            h(key.data(), KeySize);
+            h.append(key.data(), KeySize);
             volatile size_t temp =
                 static_cast<std::size_t>(h);
             (void)temp;

@@ -31,11 +31,10 @@
 #include <ripple/protocol/STParsedJSON.h>
 #include <ripple/protocol/STPathSet.h>
 #include <ripple/protocol/TxFormats.h>
-#include <ripple/protocol/types.h>
 #include <ripple/protocol/impl/STVar.h>
 #include <beast/module/core/text/LexicalCast.h>
 #include <cassert>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 
@@ -139,20 +138,6 @@ static Json::Value singleton_expected (std::string const& object,
             "]' must be an object with a single key/object value.");
 }
 
-static Json::Value template_mismatch (SField const& sField)
-{
-    return RPC::make_error (rpcINVALID_PARAMS,
-        "Object '" +  sField.getName () +
-            "' contents did not meet requirements for that type.");
-}
-
-static Json::Value
-non_object_in_array (std::string const& item, Json::UInt index)
-{
-    return RPC::make_error (rpcINVALID_PARAMS,
-        "Item '" + item + "' at index " + std::to_string (index) +
-            " is not an object.  Arrays may only contain objects.");
-}
 
 // This function is used by parseObject to parse any JSON type that doesn't
 // recurse.  Everything represented here is a leaf-type.
@@ -529,10 +514,10 @@ static boost::optional<detail::STVar> parseLeaf (
                     Json::Value const& currency = pathEl["currency"];
                     Json::Value const& issuer   = pathEl["issuer"];
                     bool hasCurrency            = false;
-                    AccountID uAccount, uIssuer;
+                    Account uAccount, uIssuer;
                     Currency uCurrency;
 
-                    if (account)
+                    if (! account.isNull ())
                     {
                         // human account id
                         if (! account.isString ())
@@ -541,22 +526,25 @@ static boost::optional<detail::STVar> parseLeaf (
                             return ret;
                         }
 
-                        // If we have what looks like a 160-bit hex value, we
-                        // set it, otherwise, we assume it's an AccountID
-                        if (!uAccount.SetHexExact (account.asString ()))
+                        std::string const strValue (account.asString ());
+
+                        if (value.size () == 40) // 160-bit hex account value
+                            uAccount.SetHex (strValue);
+
                         {
-                            auto const a = parseBase58<AccountID>(
-                                account.asString());
-                            if (! a)
+                            RippleAddress a;
+
+                            if (! a.setAccountID (strValue))
                             {
                                 error = invalid_data (element_name, "account");
                                 return ret;
                             }
-                            uAccount = *a;
+
+                            uAccount = a.getAccountID ();
                         }
                     }
 
-                    if (currency)
+                    if (!currency.isNull ())
                     {
                         // human currency
                         if (!currency.isString ())
@@ -567,17 +555,18 @@ static boost::optional<detail::STVar> parseLeaf (
 
                         hasCurrency = true;
 
-                        if (!uCurrency.SetHexExact (currency.asString ()))
+                        if (currency.asString ().size () == 40)
                         {
-                            if (!to_currency (uCurrency, currency.asString ()))
-                            {
-                                error = invalid_data (element_name, "currency");
-                                return ret;
-                            }
+                            uCurrency.SetHex (currency.asString ());
+                        }
+                        else if (!to_currency (uCurrency, currency.asString ()))
+                        {
+                            error = invalid_data (element_name, "currency");
+                            return ret;
                         }
                     }
 
-                    if (issuer)
+                    if (!issuer.isNull ())
                     {
                         // human account id
                         if (!issuer.isString ())
@@ -586,16 +575,21 @@ static boost::optional<detail::STVar> parseLeaf (
                             return ret;
                         }
 
-                        if (!uIssuer.SetHexExact (issuer.asString ()))
+                        if (issuer.asString ().size () == 40)
                         {
-                            auto const a = parseBase58<AccountID>(
-                                issuer.asString());
-                            if (! a)
+                            uIssuer.SetHex (issuer.asString ());
+                        }
+                        else
+                        {
+                            RippleAddress a;
+
+                            if (!a.setAccountID (issuer.asString ()))
                             {
                                 error = invalid_data (element_name, "issuer");
                                 return ret;
                             }
-                            uIssuer = *a;
+
+                            uIssuer = a.getAccountID ();
                         }
                     }
 
@@ -626,17 +620,26 @@ static boost::optional<detail::STVar> parseLeaf (
 
             try
             {
-                // VFALCO This needs careful auditing
-                auto const account =
-                    parseHexOrBase58<AccountID>(
-                        strValue);
-                if (! account)
+                if (value.size () == 40) // 160-bit hex account value
                 {
-                    error = invalid_data (json_name, fieldName);
-                    return ret;
+                    Account account;
+                    account.SetHex (strValue);
+                    ret = detail::make_stvar <STAccount> (field, account);
                 }
-                ret = detail::make_stvar <STAccount>(
-                    field, *account);
+                else
+                {
+                    // ripple address
+                    RippleAddress a;
+
+                    if (!a.setAccountID (strValue))
+                    {
+                        error = invalid_data (json_name, fieldName);
+                        return ret;
+                    }
+
+                    ret =
+                        detail::make_stvar <STAccount> (field, a.getAccountID ());
+                }
             }
             catch (...)
             {
@@ -763,13 +766,6 @@ static boost::optional <STObject> parseObject (
         }
     }
 
-    // Some inner object types have templates.  Attempt to apply that.
-    if (data.setTypeFromSField (inName) == STObject::typeSetFail)
-    {
-        error = template_mismatch (inName);
-        return boost::none;
-    }
-
     return std::move (data);
 }
 
@@ -827,19 +823,12 @@ static boost::optional <detail::STVar> parseArray (
 
             auto ret = parseObject (ss.str (), objectFields,
                 nameField, depth + 1, error);
-            if (! ret)
-            {
-                    std::string errMsg = error["error_message"].asString ();
-                    error["error_message"] = "Error at '" + ss.str () +
-                        "'. " + errMsg;
-                    return boost::none;
-            }
 
-            if (ret->getFName().fieldType != STI_OBJECT)
-            {
-                error = non_object_in_array (ss.str(), i);
-                return boost::none;
-            }
+            if (! ret ||
+                (ret->getFName().fieldType != STI_OBJECT))
+	    {
+	        return boost::none;
+	    }
 
             tail.push_back (std::move (*ret));
         }
@@ -862,7 +851,7 @@ STParsedJSONObject::STParsedJSONObject (
     Json::Value const& json)
 {
     using namespace STParsedJSONDetail;
-    object = parseObject (name, json, sfGeneric, 0, error);
+    object = std::move (parseObject (name, json, sfGeneric, 0, error));
 }
 
 //------------------------------------------------------------------------------

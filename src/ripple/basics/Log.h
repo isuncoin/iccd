@@ -23,6 +23,7 @@
 #include <ripple/basics/UnorderedContainers.h>
 #include <beast/utility/ci_char_traits.h>
 #include <beast/utility/Journal.h>
+#include <beast/utility/noexcept.h>
 #include <boost/filesystem.hpp>
 #include <map>
 #include <mutex>
@@ -218,12 +219,6 @@ private:
         beast::Journal::Severity severity, std::string const& partition);
 };
 
-// Wraps a Journal::Stream to skip evaluation of
-// expensive argument lists if the stream is not active.
-#ifndef JLOG
-#define JLOG(x) if (!x) { } else x
-#endif
-
 //------------------------------------------------------------------------------
 // VFALCO DEPRECATED Temporary transition function until interfaces injected
 inline
@@ -234,37 +229,17 @@ deprecatedLogs()
     return logs;
 }
 
-class LogSquelcher
-{
-public:
-    LogSquelcher()
-        : severity_(deprecatedLogs().severity())
-    {
-        deprecatedLogs().severity(
-            beast::Journal::Severity::kNone);
-    }
-
-    ~LogSquelcher()
-    {
-        deprecatedLogs().severity(severity_);
-    }
-
-private:
-    beast::Journal::Severity const severity_;
-};
-
 // VFALCO DEPRECATED Inject beast::Journal instead
 #define ShouldLog(s, k) \
     ::ripple::deprecatedLogs()[#k].active(::ripple::Logs::toSeverity (s))
 
-// DEPRECATED
 #define WriteLog(s, k)                                              \
     if (!ShouldLog(s, k))                                           \
         do {} while (0);                                            \
     else                                                            \
         ::beast::Journal::Stream (::ripple::deprecatedLogs()[#k],   \
                                   ::ripple::Logs::toSeverity(s))
-// DEPRECATED
+
 #define CondLog(c, s, k) \
      if (!ShouldLog(s, k) || !(c))                                  \
          do {} while(0);                                            \

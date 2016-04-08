@@ -18,10 +18,10 @@
 //==============================================================================
 
 #include <BeastConfig.h>
+#include <ripple/app/book/Quality.h>
 #include <ripple/app/paths/Credit.h>
 #include <ripple/app/paths/cursor/RippleLiquidity.h>
 #include <ripple/basics/Log.h>
-#include <ripple/protocol/Quality.h>
 
 namespace ripple {
 namespace path {
@@ -34,7 +34,7 @@ namespace path {
 // Reedems are limited based on IOUs previous has on hand.
 // Issues are limited based on credit limits and amount owed.
 //
-// Currency cannot be XRP because we are rippling.
+// Currency cannot be ICC because we are rippling.
 //
 // No permanent account balance adjustments as we don't know how much is going
 // to actually be pushed through yet - changes are only in the scratch pad
@@ -57,15 +57,15 @@ TER PathCursor::reverseLiquidityForAccount () const
 
     const bool nextNodeIsAccount = isFinalNode || nextNode().isAccount();
 
-    AccountID const& previousAccountID = previousNodeIsAccount
+    Account const& previousAccountID = previousNodeIsAccount
         ? previousNode().account_ : node().account_;
-    AccountID const& nextAccountID = nextNodeIsAccount ? nextNode().account_
+    Account const& nextAccountID = nextNodeIsAccount ? nextNode().account_
         : node().account_;   // Offers are always issue.
 
     // This is the quality from from the previous node to this one.
     const std::uint32_t uQualityIn
          = (nodeIndex_ != 0)
-            ? quality_in (view(),
+            ? quality_in (ledger(),
                 node().account_,
                 previousAccountID,
                 node().issue_.currency)
@@ -74,7 +74,7 @@ TER PathCursor::reverseLiquidityForAccount () const
     // And this is the quality from the next one to this one.
     const std::uint32_t uQualityOut
         = (nodeIndex_ != lastNodeIndex)
-            ? quality_out (view(),
+            ? quality_out (ledger(),
                 node().account_,
                 nextAccountID,
                 node().issue_.currency)
@@ -83,7 +83,7 @@ TER PathCursor::reverseLiquidityForAccount () const
     // For previousNodeIsAccount:
     // Previous account is already owed.
     const STAmount saPrvOwed = (previousNodeIsAccount && nodeIndex_ != 0)
-        ? creditBalance (view(),
+        ? creditBalance (ledger(),
             node().account_,
             previousAccountID,
             node().issue_.currency)
@@ -91,7 +91,7 @@ TER PathCursor::reverseLiquidityForAccount () const
 
     // The limit amount that the previous account may owe.
     const STAmount saPrvLimit = (previousNodeIsAccount && nodeIndex_ != 0)
-        ? creditLimit (view(),
+        ? creditLimit (ledger(),
             node().account_,
             previousAccountID,
             node().issue_.currency)
@@ -99,13 +99,13 @@ TER PathCursor::reverseLiquidityForAccount () const
 
     // Next account is owed.
     const STAmount saNxtOwed = (nextNodeIsAccount && nodeIndex_ != lastNodeIndex)
-        ? creditBalance (view(),
+        ? creditBalance (ledger(),
             node().account_,
             nextAccountID,
             node().issue_.currency)
         : STAmount (node().issue_);
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "reverseLiquidityForAccount>"
         << " nodeIndex_=" << nodeIndex_ << "/" << lastNodeIndex
         << " previousAccountID=" << previousAccountID
@@ -143,7 +143,7 @@ TER PathCursor::reverseLiquidityForAccount () const
     // For !nextNodeIsAccount
     auto saCurDeliverAct  = node().saRevDeliver.zeroed();
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "reverseLiquidityForAccount:"
         << " saPrvRedeemReq:" << saPrvRedeemReq
         << " saPrvIssueReq:" << saPrvIssueReq
@@ -154,7 +154,7 @@ TER PathCursor::reverseLiquidityForAccount () const
         << " saNxtOwed:" << saNxtOwed;
 
     // VFALCO-FIXME this generates errors
-    //JLOG (j_.trace) << pathState_.getJson ();
+    //WriteLog (lsTRACE, RippleCalc) << pathState_.getJson ();
 
     // Current redeem req can't be more than IOUs on hand.
     assert (!node().saRevRedeem || -saNxtOwed >= node().saRevRedeem);
@@ -187,7 +187,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                 saPrvLimit + saPrvOwed);
             auto saCurWantedAct = saCurWantedReq.zeroed ();
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "reverseLiquidityForAccount: account --> "
                 << "ACCOUNT --> $ :"
                 << " saCurWantedReq=" << saCurWantedReq;
@@ -202,7 +202,7 @@ TER PathCursor::reverseLiquidityForAccount () const
 
                 uRateMax = STAmount::uRateOne;
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "reverseLiquidityForAccount: Redeem at 1:1"
                     << " saPrvRedeemReq=" << saPrvRedeemReq
                     << " (available) previousNode.saRevRedeem="
@@ -235,7 +235,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                     saCurWantedAct,
                     uRateMax);
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "reverseLiquidityForAccount: Issuing: Rate: "
                     << "quality in : 1.0"
                     << " previousNode.saRevIssue:" << previousNode().saRevIssue
@@ -274,7 +274,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                     saCurRedeemAct,
                     uRateMax);
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "reverseLiquidityForAccount: "
                     << "Rate : 1.0 : quality out"
                     << " previousNode.saRevRedeem:" << previousNode().saRevRedeem
@@ -298,7 +298,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                     saCurRedeemAct,
                     uRateMax);
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "reverseLiquidityForAccount: "
                     << "Rate: quality in : quality out:"
                     << " previousNode.saRevIssue:" << previousNode().saRevIssue
@@ -317,14 +317,14 @@ TER PathCursor::reverseLiquidityForAccount () const
                 rippleLiquidity (
                     rippleCalc_,
                     QUALITY_ONE,
-                    rippleTransferRate (view(), node().account_),
+                    rippleTransferRate (ledger(), node().account_),
                     saPrvRedeemReq,
                     node().saRevIssue,
                     previousNode().saRevRedeem,
                     saCurIssueAct,
                     uRateMax);
 
-                JLOG (j_.debug)
+                WriteLog (lsDEBUG, RippleCalc)
                     << "reverseLiquidityForAccount: "
                     << "Rate : 1.0 : transfer_rate:"
                     << " previousNode.saRevRedeem:" << previousNode().saRevRedeem
@@ -352,7 +352,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                     saCurIssueAct,
                     uRateMax);
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "reverseLiquidityForAccount: "
                     << "Rate: quality in : 1.0:"
                     << " previousNode.saRevIssue:" << previousNode().saRevIssue
@@ -365,7 +365,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                 terResult = tecPATH_DRY;
             }
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "reverseLiquidityForAccount: "
                 << "^|account --> ACCOUNT --> account :"
                 << " node.saRevRedeem:" << node().saRevRedeem
@@ -380,7 +380,7 @@ TER PathCursor::reverseLiquidityForAccount () const
         // account --> ACCOUNT --> offer
         // Note: deliver is always issue as ACCOUNT is the issuer for the offer
         // input.
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "reverseLiquidityForAccount: "
             << "account --> ACCOUNT --> offer";
 
@@ -403,7 +403,7 @@ TER PathCursor::reverseLiquidityForAccount () const
             rippleLiquidity (
                 rippleCalc_,
                 QUALITY_ONE,
-                rippleTransferRate (view(), node().account_),
+                rippleTransferRate (ledger(), node().account_),
                 saPrvRedeemReq,
                 node().saRevDeliver,
                 previousNode().saRevRedeem,
@@ -434,7 +434,7 @@ TER PathCursor::reverseLiquidityForAccount () const
             terResult   = tecPATH_DRY;
         }
 
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "reverseLiquidityForAccount: "
             << " node.saRevDeliver:" << node().saRevDeliver
             << " saCurDeliverAct:" << saCurDeliverAct
@@ -453,7 +453,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                     pathState_.outReq() - pathState_.outAct();
             STAmount saCurWantedAct = saCurWantedReq.zeroed();
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "reverseLiquidityForAccount: "
                 << "offer --> ACCOUNT --> $ :"
                 << " saCurWantedReq:" << saCurWantedReq
@@ -462,11 +462,17 @@ TER PathCursor::reverseLiquidityForAccount () const
 
             if (saCurWantedReq <= zero)
             {
-                assert(false);
-                JLOG (j_.fatal) << "CurWantReq was not positive";
+                // TEMPORARY emergency fix
+                //
+                // TODO(tom): why can't saCurWantedReq be -1 if you want to
+                // compute maximum liquidity?  This might be unimplemented
+                // functionality.  TODO(tom): should the same check appear in
+                // other paths or even be pulled up?
+                WriteLog (lsFATAL, RippleCalc) << "CurWantReq was not positive";
                 return tefEXCEPTION;
             }
 
+            assert (saCurWantedReq > zero); // FIXME: We got one of these
             // The previous node is an offer; we are receiving our own currency.
 
             // The previous order book's entries might hold our issuances; might
@@ -497,7 +503,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                 terResult   = tecPATH_DRY;
             }
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "reverseLiquidityForAccount:"
                 << " previousNode().saRevDeliver:" << previousNode().saRevDeliver
                 << " saPrvDeliverReq:" << saPrvDeliverReq
@@ -508,7 +514,7 @@ TER PathCursor::reverseLiquidityForAccount () const
         {
             // offer --> ACCOUNT --> account
             // Note: offer is always delivering(redeeming) as account is issuer.
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "reverseLiquidityForAccount: "
                 << "offer --> ACCOUNT --> account :"
                 << " node.saRevRedeem:" << node().saRevRedeem
@@ -546,7 +552,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                 rippleLiquidity (
                     rippleCalc_,
                     QUALITY_ONE,
-                    rippleTransferRate (view(), node().account_),
+                    rippleTransferRate (ledger(), node().account_),
                     saPrvDeliverReq,
                     node().saRevIssue,
                     previousNode().saRevDeliver,
@@ -554,7 +560,7 @@ TER PathCursor::reverseLiquidityForAccount () const
                     uRateMax);
             }
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "reverseLiquidityForAccount:"
                 << " saCurRedeemAct:" << saCurRedeemAct
                 << " node.saRevRedeem:" << node().saRevRedeem
@@ -572,14 +578,14 @@ TER PathCursor::reverseLiquidityForAccount () const
     {
         // offer --> ACCOUNT --> offer
         // deliver/redeem -> deliver/issue.
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "reverseLiquidityForAccount: offer --> ACCOUNT --> offer";
 
         // Rate : 1.0 : transfer_rate
         rippleLiquidity (
             rippleCalc_,
             QUALITY_ONE,
-            rippleTransferRate (view(), node().account_),
+            rippleTransferRate (ledger(), node().account_),
             saPrvDeliverReq,
             node().saRevDeliver,
             previousNode().saRevDeliver,

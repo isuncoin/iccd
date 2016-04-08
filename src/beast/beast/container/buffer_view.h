@@ -28,8 +28,8 @@
 #include <iterator>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <vector>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 
 namespace beast {
 
@@ -39,13 +39,13 @@ template <class T, class U,
     bool = std::is_const <std::remove_reference_t <T>>::value>
 struct apply_const
 {
-    using type = U;
+    typedef U type;
 };
 
 template <class T, class U>
 struct apply_const <T, U, true>
 {
-    using type = const U;
+    typedef const U type;
 };
 
 // is_contiguous is true if C is a contiguous container
@@ -161,7 +161,7 @@ private:
     void
     assign (Iter first, Iter last) noexcept
     {
-        using U = typename std::iterator_traits <Iter>::value_type;
+        typedef typename std::iterator_traits <Iter>::value_type U;
 
         static_assert (detail::buffer_view_const_compatible <T, U>::value,
             "Cannot convert from 'U const' to 'T', "
@@ -190,17 +190,17 @@ private:
     }
 
 public:
-    using value_type = T;
-    using size_type = std::size_t;
-    using difference_type = std::ptrdiff_t;
-    using reference = T&;
-    using const_reference = T const&;
-    using pointer = T*;
-    using const_pointer = T const*;
-    using iterator = T*;
-    using const_iterator = T const*;
-    using reverse_iterator = std::reverse_iterator <iterator>;
-    using const_reverse_iterator = std::reverse_iterator <const_iterator>;
+    typedef T value_type;
+    typedef std::size_t size_type;
+    typedef std::ptrdiff_t difference_type;
+    typedef T& reference;
+    typedef T const& const_reference;
+    typedef T* pointer;
+    typedef T const* const_pointer;
+    typedef T* iterator;
+    typedef T const* const_iterator;
+    typedef std::reverse_iterator <iterator> reverse_iterator;
+    typedef std::reverse_iterator <const_iterator> const_reverse_iterator;
 
     // default construct
     buffer_view () noexcept

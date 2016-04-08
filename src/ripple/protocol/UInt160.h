@@ -35,7 +35,6 @@ namespace ripple {
 template <class Tag>
 uint256 to256 (base_uint<160, Tag> const& a)
 {
-    // VFALCO This assumes uint256 is zero-initialized
     uint256 m;
     memcpy (m.begin (), a.begin (), a.size ());
     return m;

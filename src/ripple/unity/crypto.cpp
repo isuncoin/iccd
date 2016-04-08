@@ -22,6 +22,7 @@
 #include <ripple/crypto/impl/Base58.cpp>
 #include <ripple/crypto/impl/Base58Data.cpp>
 #include <ripple/crypto/impl/CBigNum.cpp>
+#include <ripple/crypto/impl/DHUtil.cpp>
 #include <ripple/crypto/impl/ec_key.cpp>
 #include <ripple/crypto/impl/ECDSA.cpp>
 #include <ripple/crypto/impl/ECDSACanonical.cpp>

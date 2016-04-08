@@ -43,14 +43,14 @@ class InfoSub
 public:
     static char const* getCountedObjectName () { return "InfoSub"; }
 
-    using pointer = std::shared_ptr<InfoSub>;
+    typedef std::shared_ptr<InfoSub>          pointer;
 
-    // VFALCO TODO Standardize on the names of weak / strong pointer type aliases.
-    using wptr = std::weak_ptr<InfoSub>;
+    // VFALCO TODO Standardize on the names of weak / strong pointer typedefs.
+    typedef std::weak_ptr<InfoSub>            wptr;
 
-    using ref = const std::shared_ptr<InfoSub>&;
+    typedef const std::shared_ptr<InfoSub>&   ref;
 
-    using Consumer = Resource::Consumer;
+    typedef Resource::Consumer Consumer;
 
 public:
     /** Abstracts the source of subscription data.
@@ -67,18 +67,18 @@ public:
         // you get transactions as they occur or once their
         // results are confirmed
         virtual void subAccount (ref ispListener,
-            hash_set<AccountID> const& vnaAccountIDs,
+            const hash_set<RippleAddress>& vnaAccountIDs,
             bool realTime) = 0;
 
         // for normal use, removes from InfoSub and server
         virtual void unsubAccount (ref isplistener,
-            hash_set<AccountID> const& vnaAccountIDs,
+            const hash_set<RippleAddress>& vnaAccountIDs,
             bool realTime) = 0;
 
         // for use during InfoSub destruction
         // Removes only from the server
         virtual void unsubAccountInternal (std::uint64_t uListener,
-            hash_set<AccountID> const& vnaAccountIDs,
+            const hash_set<RippleAddress>& vnaAccountIDs,
             bool realTime) = 0;
 
         // VFALCO TODO Document the bool return value
@@ -97,13 +97,6 @@ public:
 
         virtual bool subRTTransactions (ref ispListener) = 0;
         virtual bool unsubRTTransactions (std::uint64_t uListener) = 0;
-
-        virtual bool subValidations (ref ispListener) = 0;
-        virtual bool unsubValidations (std::uint64_t uListener) = 0;
-
-        virtual bool subPeerStatus (ref ispListener) = 0;
-        virtual bool unsubPeerStatus (std::uint64_t uListener) = 0;
-        virtual void pubPeerStatus (std::function<Json::Value(void)> const&) = 0;
 
         // VFALCO TODO Remove
         //             This was added for one particular partner, it
@@ -131,11 +124,11 @@ public:
     void onSendEmpty ();
 
     void insertSubAccountInfo (
-        AccountID const& account,
+        RippleAddress addr,
         bool rt);
 
     void deleteSubAccountInfo (
-        AccountID const& account,
+        RippleAddress addr,
         bool rt);
 
     void clearPathRequest ();
@@ -145,15 +138,16 @@ public:
     std::shared_ptr <PathRequest> const& getPathRequest ();
 
 protected:
-    using LockType = std::mutex;
-    using ScopedLockType = std::lock_guard <LockType>;
+    typedef std::mutex LockType;
+    typedef std::lock_guard <LockType> ScopedLockType;
     LockType mLock;
 
 private:
     Consumer                      m_consumer;
     Source&                       m_source;
-    hash_set <AccountID> realTimeSubscriptions_;
-    hash_set <AccountID> normalSubscriptions_;
+    hash_set <RippleAddress>      mSubAccountInfo_t; // real time subscriptions
+    hash_set <RippleAddress>      mSubAccountInfo_f; // normal subscriptions
+    hash_set <RippleAddress>      mSubAccountTransaction;
     std::shared_ptr <PathRequest> mPathRequest;
     std::uint64_t                 mSeq;
 };

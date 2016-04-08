@@ -20,7 +20,7 @@
 #ifndef RIPPLE_PEERFINDER_LIVECACHE_H_INCLUDED
 #define RIPPLE_PEERFINDER_LIVECACHE_H_INCLUDED
 
-#include <ripple/peerfinder/PeerfinderManager.h>
+#include <ripple/peerfinder/Manager.h>
 #include <ripple/peerfinder/impl/iosformat.h>
 #include <ripple/peerfinder/impl/Tuning.h>
 #include <beast/chrono/chrono_io.h>
@@ -51,9 +51,9 @@ protected:
         Endpoint endpoint;
     };
 
-    using list_type = boost::intrusive::make_list <Element,
+    typedef boost::intrusive::make_list <Element,
         boost::intrusive::constant_time_size <false>
-            >::type;
+            >::type list_type;
 
 public:
     /** A list of Endpoint at the same hops
@@ -75,15 +75,15 @@ public:
         };
 
     public:
-        using iterator = boost::transform_iterator <Transform,
-            typename list_type::const_iterator>;
+        typedef boost::transform_iterator <Transform,
+            typename list_type::const_iterator> iterator;
 
-        using const_iterator = iterator;
+        typedef iterator const_iterator;
 
-        using reverse_iterator = boost::transform_iterator <Transform,
-            typename list_type::const_reverse_iterator>;
+        typedef boost::transform_iterator <Transform,
+            typename list_type::const_reverse_iterator> reverse_iterator;
 
-        using const_reverse_iterator = reverse_iterator;
+        typedef reverse_iterator const_reverse_iterator;
 
         iterator begin () const
         {
@@ -184,15 +184,15 @@ template <class Allocator = std::allocator <char>>
 class Livecache : protected detail::LivecacheBase
 {
 private:
-    using cache_type = beast::aged_map <beast::IP::Endpoint, Element,
+    typedef beast::aged_map <beast::IP::Endpoint, Element,
         std::chrono::steady_clock, std::less <beast::IP::Endpoint>,
-            Allocator>;
+            Allocator> cache_type;
 
     beast::Journal m_journal;
     cache_type m_cache;
 
 public:
-    using allocator_type = Allocator;
+    typedef Allocator allocator_type;
 
     /** Create the cache. */
     Livecache (
@@ -215,8 +215,8 @@ public:
         // but not given out (since they would exceed maxHops). They
         // are used for automatic connection attempts.
         //
-        using Histogram = std::array <int, 1 + Tuning::maxHops + 1>;
-        using lists_type = std::array <list_type, 1 + Tuning::maxHops + 1>;
+        typedef std::array <int, 1 + Tuning::maxHops + 1> Histogram;
+        typedef std::array <list_type, 1 + Tuning::maxHops + 1> lists_type;
 
         template <bool IsConst>
         struct Transform
@@ -231,17 +231,17 @@ public:
         };
 
     public:
-        using iterator = boost::transform_iterator <Transform <false>,
-            typename lists_type::iterator>;
+        typedef boost::transform_iterator <Transform <false>,
+            typename lists_type::iterator> iterator;
 
-        using const_iterator = boost::transform_iterator <Transform <true>,
-            typename lists_type::const_iterator>;
+        typedef boost::transform_iterator <Transform <true>,
+            typename lists_type::const_iterator> const_iterator;
 
-        using reverse_iterator = boost::transform_iterator <Transform <false>,
-            typename lists_type::reverse_iterator>;
+        typedef boost::transform_iterator <Transform <false>,
+            typename lists_type::reverse_iterator> reverse_iterator;
 
-        using const_reverse_iterator = boost::transform_iterator <Transform <true>,
-            typename lists_type::const_reverse_iterator>;
+        typedef boost::transform_iterator <Transform <true>,
+            typename lists_type::const_reverse_iterator> const_reverse_iterator;
 
         iterator begin ()
         {

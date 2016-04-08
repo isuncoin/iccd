@@ -82,8 +82,8 @@ public:
         text[0] = 0;
     }
 
-    using CharPointerType = String::CharPointerType;
-    using CharType = String::CharPointerType::CharType;
+    typedef String::CharPointerType CharPointerType;
+    typedef String::CharPointerType::CharType CharType;
 
     //==============================================================================
     static CharPointerType createUninitialisedBytes (const size_t numBytes)
@@ -1872,7 +1872,7 @@ struct StringEncodingConverter
     {
         String& source = const_cast <String&> (s);
 
-        using DestChar = typename CharPointerType_Dest::CharType;
+        typedef typename CharPointerType_Dest::CharType DestChar;
 
         if (source.isEmpty())
             return CharPointerType_Dest (reinterpret_cast <const DestChar*> (&emptyChar));

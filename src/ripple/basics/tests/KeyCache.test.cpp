@@ -18,7 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/basics/chrono.h>
 #include <ripple/basics/KeyCache.h>
 #include <beast/unit_test/suite.h>
 #include <beast/chrono/manual_clock.h>
@@ -30,11 +29,11 @@ class KeyCache_test : public beast::unit_test::suite
 public:
     void run ()
     {
-        TestStopwatch clock;
+        beast::manual_clock <std::chrono::steady_clock> clock;
         clock.set (0);
 
-        using Key = std::string;
-        using Cache = KeyCache <Key>;
+        typedef std::string Key;
+        typedef KeyCache <Key> Cache;
 
         // Insert an item, retrieve it, and age it so it gets purged.
         {

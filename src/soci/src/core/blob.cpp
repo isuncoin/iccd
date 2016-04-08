@@ -6,8 +6,8 @@
 //
 
 #define SOCI_SOURCE
-#include "soci/blob.h"
-#include "soci/session.h"
+#include "blob.h"
+#include "session.h"
 
 #include <cstddef>
 

@@ -21,15 +21,13 @@
 #include <ripple/basics/Log.h>
 #include <ripple/json/json_reader.h>
 #include <ripple/json/to_string.h>
-#include <ripple/protocol/HashPrefix.h>
-#include <ripple/protocol/InnerObjectFormats.h>
 #include <ripple/protocol/STBase.h>
 #include <ripple/protocol/STAccount.h>
 #include <ripple/protocol/STArray.h>
 #include <ripple/protocol/STObject.h>
 #include <ripple/protocol/STParsedJSON.h>
 #include <beast/module/core/text/LexicalCast.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 
@@ -37,8 +35,8 @@ STObject::~STObject()
 {
 #if 0
     // Turn this on to get a histogram on exit
-    static Log log;
-    log(v_.size());
+    static beast::static_initializer<Log> log;
+    (*log)(v_.size());
 #endif
 }
 
@@ -68,7 +66,7 @@ STObject::STObject (SOTemplate const& type,
         SerialIter & sit, SField const& name)
     : STBase (name)
 {
-    v_.reserve(type.size());
+    v_.reserve(type.peek().size());
     set (sit);
     setType (type);
 }
@@ -92,10 +90,10 @@ STObject::operator= (STObject&& other)
 void STObject::set (const SOTemplate& type)
 {
     v_.clear();
-    v_.reserve(type.size());
+    v_.reserve(type.peek().size());
     mType = &type;
 
-    for (auto const& elem : type.all())
+    for (auto const& elem : type.peek())
     {
         if (elem->flags != SOE_REQUIRED)
             v_.emplace_back(detail::nonPresentObject, elem->e_field);
@@ -109,8 +107,8 @@ bool STObject::setType (const SOTemplate& type)
     bool valid = true;
     mType = &type;
     decltype(v_) v;
-    v.reserve(type.size());
-    for (auto const& e : type.all())
+    v.reserve(type.peek().size());
+    for (auto const& e : type.peek())
     {
         auto const iter = std::find_if(
             v_.begin(), v_.end(), [&](detail::STVar const& b)
@@ -121,7 +119,7 @@ bool STObject::setType (const SOTemplate& type)
             {
                 WriteLog (lsWARNING, STObject) <<
                     "setType( " << getFName ().getName () <<
-                    " ) invalid default " << e->e_field.fieldName;
+                    ") invalid default " << e->e_field.fieldName;
                 valid = false;
             }
             v.emplace_back(std::move(*iter));
@@ -133,7 +131,7 @@ bool STObject::setType (const SOTemplate& type)
             {
                 WriteLog (lsWARNING, STObject) <<
                     "setType( " << getFName ().getName () <<
-                    " ) invalid missing " << e->e_field.fieldName;
+                    ") invalid missing " << e->e_field.fieldName;
                 valid = false;
             }
             v.emplace_back(detail::nonPresentObject, e->e_field);
@@ -146,7 +144,7 @@ bool STObject::setType (const SOTemplate& type)
         {
             WriteLog (lsWARNING, STObject) <<
                 "setType( " << getFName ().getName () <<
-                " ) invalid leftover " << e->getFName ().getName ();
+                ") invalid leftover " << e->getFName ().getName ();
             valid = false;
         }
     }
@@ -156,24 +154,10 @@ bool STObject::setType (const SOTemplate& type)
     return valid;
 }
 
-STObject::ResultOfSetTypeFromSField
-STObject::setTypeFromSField (SField const& sField)
-{
-    ResultOfSetTypeFromSField ret = noTemplate;
-
-    SOTemplate const* elements =
-        InnerObjectFormats::getInstance ().findSOTemplateBySField (sField);
-    if (elements)
-    {
-        ret = setType (*elements) ? typeIsSet : typeSetFail;
-    }
-    return ret;
-}
-
 bool STObject::isValidForType ()
 {
     auto it = v_.begin();
-    for (auto const& elem : mType->all())
+    for (SOTemplate::value_type const& elem : mType->peek())
     {
         if (it == v_.end())
             return false;
@@ -235,13 +219,6 @@ bool STObject::set (SerialIter& sit, int depth)
 
             // Unflatten the field
             v_.emplace_back(sit, fn);
-
-            // If the object type has a known SOTemplate then set it.
-            STObject* const obj = dynamic_cast <STObject*> (&(v_.back().get()));
-            if (obj && (obj->setTypeFromSField (fn) == typeSetFail))
-            {
-                throw std::runtime_error ("field deserialization error");
-            }
         }
     }
 
@@ -287,6 +264,39 @@ std::string STObject::getFullText () const
     return ret;
 }
 
+void STObject::add (Serializer& s, bool withSigningFields) const
+{
+    std::map<int, STBase const*> fields;
+    for (auto const& e : v_)
+    {
+        // pick out the fields and sort them
+        if ((e->getSType() != STI_NOTPRESENT) &&
+            e->getFName().shouldInclude (withSigningFields))
+        {
+            fields.insert (std::make_pair (
+                e->getFName().fieldCode, &e.get()));
+        }
+    }
+
+    // insert sorted
+    for (auto const& e : fields)
+    {
+        auto const field = e.second;
+
+        // When we serialize an object inside another object,
+        // the type associated by rule with this field name
+        // must be OBJECT, or the object cannot be deserialized
+        assert ((field->getSType() != STI_OBJECT) ||
+            (field->getFName().fieldType == STI_OBJECT));
+        field->addFieldID (s);
+        field->add (s);
+        if (dynamic_cast<const STArray*> (field) != nullptr)
+            s.addFieldID (STI_ARRAY, 1);
+        else if (dynamic_cast<const STObject*> (field) != nullptr)
+            s.addFieldID (STI_OBJECT, 1);
+    }
+}
+
 std::string STObject::getText () const
 {
     std::string ret = "{";
@@ -316,10 +326,32 @@ bool STObject::isEquivalent (const STBase& t) const
         return false;
     }
 
-    if (mType != nullptr && (v->mType == mType))
-        return equivalentSTObjectSameTemplate (*this, *v);
+    auto it1 = v_.begin (), end1 = v_.end ();
+    auto it2 = v->v_.begin (), end2 = v->v_.end ();
 
-    return equivalentSTObject (*this, *v);
+    while ((it1 != end1) && (it2 != end2))
+    {
+        if ((it1->get().getSType () != it2->get().getSType ()) ||
+            !it1->get().isEquivalent (it2->get()))
+        {
+            if (it1->get().getSType () != it2->get().getSType ())
+            {
+                WriteLog (lsDEBUG, STObject) << "notEquiv type " <<
+                    it1->get().getFullText() << " != " <<  it2->get().getFullText();
+            }
+            else
+            {
+                WriteLog (lsDEBUG, STObject) << "notEquiv " <<
+                     it1->get().getFullText() << " != " <<  it2->get().getFullText();
+            }
+            return false;
+        }
+
+        ++it1;
+        ++it2;
+    }
+
+    return (it1 == end1) && (it2 == end2);
 }
 
 uint256 STObject::getHash (std::uint32_t prefix) const
@@ -416,12 +448,20 @@ bool STObject::isFieldPresent (SField const& field) const
 
 STObject& STObject::peekFieldObject (SField const& field)
 {
-    return peekField<STObject> (field);
-}
+    STBase* rf = getPField (field, true);
 
-STArray& STObject::peekFieldArray (SField const& field)
-{
-    return peekField<STArray> (field);
+    if (!rf)
+        throw std::runtime_error ("Field not found");
+
+    if (rf->getSType () == STI_NOTPRESENT)
+        rf = makeFieldPresent (field);
+
+    STObject* cf = dynamic_cast<STObject*> (rf);
+
+    if (!cf)
+        throw std::runtime_error ("Wrong field type");
+
+    return *cf;
 }
 
 bool STObject::setFlag (std::uint32_t f)
@@ -558,13 +598,32 @@ uint256 STObject::getFieldH256 (SField const& field) const
     return getFieldByValue <STHash256> (field);
 }
 
-AccountID STObject::getAccountID (SField const& field) const
+RippleAddress STObject::getFieldAccount (SField const& field) const
+{
+    const STBase* rf = peekAtPField (field);
+
+    if (!rf)
+        throw std::runtime_error ("Field not found");
+
+    SerializedTypeID id = rf->getSType ();
+
+    if (id == STI_NOTPRESENT) return RippleAddress ();
+
+    const STAccount* cf = dynamic_cast<const STAccount*> (rf);
+
+    if (!cf)
+        throw std::runtime_error ("Wrong field type");
+
+    return cf->getValueNCA ();
+}
+
+Account STObject::getFieldAccount160 (SField const& field) const
 {
     auto rf = peekAtPField (field);
     if (!rf)
         throw std::runtime_error ("Field not found");
 
-    AccountID account;
+    Account account;
     if (rf->getSType () != STI_NOTPRESENT)
     {
         const STAccount* cf = dynamic_cast<const STAccount*> (rf);
@@ -591,6 +650,12 @@ STAmount const& STObject::getFieldAmount (SField const& field) const
     return getFieldByConstRef <STAmount> (field, empty);
 }
 
+const STArray& STObject::getFieldArray (SField const& field) const
+{
+    static STArray const empty{};
+    return getFieldByConstRef <STArray> (field, empty);
+}
+
 STPathSet const& STObject::getFieldPathSet (SField const& field) const
 {
     static STPathSet const empty{};
@@ -601,18 +666,6 @@ const STVector256& STObject::getFieldV256 (SField const& field) const
 {
     static STVector256 const empty{};
     return getFieldByConstRef <STVector256> (field, empty);
-}
-
-const STArray& STObject::getFieldArray (SField const& field) const
-{
-    static STArray const empty{};
-    return getFieldByConstRef <STArray> (field, empty);
-}
-
-const STObject& STObject::getFieldObject (SField const& field) const
-{
-    static STObject const empty{sfInvalid};
-    return getFieldByConstRef <STObject> (field, empty);
 }
 
 void
@@ -668,7 +721,7 @@ void STObject::setFieldV256 (SField const& field, STVector256 const& v)
     setFieldUsingSetValue <STVector256> (field, v);
 }
 
-void STObject::setAccountID (SField const& field, AccountID const& v)
+void STObject::setFieldAccount (SField const& field, Account const& v)
 {
     STBase* rf = getPField (field, true);
 
@@ -703,11 +756,6 @@ void STObject::setFieldPathSet (SField const& field, STPathSet const& v)
 }
 
 void STObject::setFieldArray (SField const& field, STArray const& v)
-{
-    setFieldUsingAssignment (field, v);
-}
-
-void STObject::setFieldObject (SField const& field, STObject const& v)
 {
     setFieldUsingAssignment (field, v);
 }
@@ -780,98 +828,6 @@ bool STObject::operator== (const STObject& obj) const
     }
 
     return true;
-}
-
-void STObject::add (Serializer& s, bool withSigningFields) const
-{
-    std::map<int, STBase const*> fields;
-    for (auto const& e : v_)
-    {
-        // pick out the fields and sort them
-        if ((e->getSType() != STI_NOTPRESENT) &&
-            e->getFName().shouldInclude (withSigningFields))
-        {
-            fields.insert (std::make_pair (
-                e->getFName().fieldCode, &e.get()));
-        }
-    }
-
-    // insert sorted
-    for (auto const& e : fields)
-    {
-        auto const field = e.second;
-
-        // When we serialize an object inside another object,
-        // the type associated by rule with this field name
-        // must be OBJECT, or the object cannot be deserialized
-        assert ((field->getSType() != STI_OBJECT) ||
-            (field->getFName().fieldType == STI_OBJECT));
-        field->addFieldID (s);
-        field->add (s);
-        if (dynamic_cast<const STArray*> (field) != nullptr)
-            s.addFieldID (STI_ARRAY, 1);
-        else if (dynamic_cast<const STObject*> (field) != nullptr)
-            s.addFieldID (STI_OBJECT, 1);
-    }
-}
-
-std::vector<STBase const*>
-STObject::getSortedFields (STObject const& objToSort)
-{
-    std::vector<STBase const*> sf;
-    sf.reserve (objToSort.getCount ());
-
-    // Choose the fields that we need to sort.
-    for (detail::STVar const& elem : objToSort.v_)
-    {
-        // Pick out the fields and sort them.
-        STBase const& base = elem.get();
-        if ((base.getSType () != STI_NOTPRESENT) &&
-            base.getFName ().shouldInclude (true))
-        {
-            sf.push_back (&base);
-        }
-    }
-
-    // Sort the fields by fieldCode.
-    std::sort (sf.begin (), sf.end (),
-        [] (STBase const* a, STBase const* b) -> bool
-        {
-            return a->getFName ().fieldCode < b->getFName ().fieldCode;
-        });
-
-    // There should never be duplicate fields in an STObject. Verify that
-    // in debug mode.
-    assert (std::adjacent_find (sf.cbegin (), sf.cend ()) == sf.cend ());
-
-    return sf;
-}
-
-bool STObject::equivalentSTObjectSameTemplate (
-    STObject const& obj1, STObject const& obj2)
-{
-    assert (obj1.mType != nullptr);
-    assert (obj1.mType == obj2.mType);
-
-    return std::equal (obj1.begin (), obj1.end (), obj2.begin (), obj2.end (),
-        [] (STBase const& st1, STBase const& st2)
-        {
-            return (st1.getSType() == st2.getSType()) &&
-                st1.isEquivalent (st2);
-        });
-}
-
-bool STObject::equivalentSTObject (STObject const& obj1, STObject const& obj2)
-{
-    auto sf1 = getSortedFields (obj1);
-    auto sf2 = getSortedFields (obj2);
-
-    return std::equal (sf1.begin (), sf1.end (), sf2.begin (), sf2.end (),
-        [] (STBase const* st1, STBase const* st2)
-        {
-            return (st1->getSType() == st2->getSType()) &&
-                st1->isEquivalent (*st2);
-        });
 }
 
 } // ripple

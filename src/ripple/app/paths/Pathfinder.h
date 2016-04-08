@@ -20,7 +20,7 @@
 #ifndef RIPPLE_APP_PATHS_PATHFINDER_H_INCLUDED
 #define RIPPLE_APP_PATHS_PATHFINDER_H_INCLUDED
 
-#include <ripple/app/ledger/Ledger.h>
+#include <ripple/app/book/Types.h>
 #include <ripple/app/paths/RippleLineCache.h>
 #include <ripple/core/LoadEvent.h>
 #include <ripple/protocol/STAmount.h>
@@ -37,16 +37,23 @@ namespace ripple {
 class Pathfinder
 {
 public:
+    /** Construct a pathfinder with an issuer.*/
+    Pathfinder (
+        RippleLineCache::ref cache,
+        Account const& srcAccount,
+        Account const& dstAccount,
+        Currency const& uSrcCurrency,
+        Account const& uSrcIssuer,
+        STAmount const& dstAmount);
+
     /** Construct a pathfinder without an issuer.*/
     Pathfinder (
         RippleLineCache::ref cache,
-        AccountID const& srcAccount,
-        AccountID const& dstAccount,
+        Account const& srcAccount,
+        Account const& dstAccount,
         Currency const& uSrcCurrency,
-        boost::optional<AccountID> const& uSrcIssuer,
-        STAmount const& dstAmount,
-        boost::optional<STAmount> const& srcAmount,
-        Application& app);
+        STAmount const& dstAmount);
+
     ~Pathfinder();
 
     static void initPathTable ();
@@ -61,19 +68,18 @@ public:
        On return, if fullLiquidityPath is not empty, then it contains the best
        additional single path which can consume all the liquidity.
     */
-    STPathSet
-    getBestPaths (
+    STPathSet getBestPaths (
         int maxPaths,
         STPath& fullLiquidityPath,
-        STPathSet const& extraPaths,
-        AccountID const& srcIssuer);
+        STPathSet& extraPaths,
+        Account const& srcIssuer);
 
     enum NodeType
     {
         nt_SOURCE,     // The source account: with an issuer account, if needed.
         nt_ACCOUNTS,   // Accounts that connect from this source/currency.
         nt_BOOKS,      // Order books that connect to this currency.
-        nt_XRP_BOOK,   // The order book from this currency to XRP.
+        nt_ICC_BOOK,   // The order book from this currency to ICC.
         nt_DEST_BOOK,  // The order book to the destination currency/issuer.
         nt_DESTINATION // The destination account only.
     };
@@ -85,11 +91,11 @@ public:
     // in a path request.
     enum PaymentType
     {
-        pt_XRP_to_XRP,
-        pt_XRP_to_nonXRP,
-        pt_nonXRP_to_XRP,
-        pt_nonXRP_to_same,   // Destination currency is the same as source.
-        pt_nonXRP_to_nonXRP  // Destination currency is NOT the same as source.
+        pt_ICC_to_ICC,
+        pt_ICC_to_nonICC,
+        pt_nonICC_to_ICC,
+        pt_nonICC_to_same,   // Destination currency is the same as source.
+        pt_nonICC_to_nonICC  // Destination currency is NOT the same as source.
     };
 
     struct PathRank
@@ -129,9 +135,9 @@ private:
 
     int getPathsOut (
         Currency const& currency,
-        AccountID const& account,
+        Account const& account,
         bool isDestCurrency,
-        AccountID const& dest);
+        Account const& dest);
 
     void addLink (
         STPath const& currentPath,
@@ -159,8 +165,8 @@ private:
 
     // Is the "no ripple" flag set from one account to another?
     bool isNoRipple (
-        AccountID const& fromAccount,
-        AccountID const& toAccount,
+        Account const& fromAccount,
+        Account const& toAccount,
         Currency const& currency);
 
     void rankPaths (
@@ -168,19 +174,18 @@ private:
         STPathSet const& paths,
         std::vector <PathRank>& rankedPaths);
 
-    AccountID mSrcAccount;
-    AccountID mDstAccount;
-    AccountID mEffectiveDst; // The account the paths need to end at
+    Account mSrcAccount;
+    Account mDstAccount;
+    Account mEffectiveDst; // The account the paths need to end at
     STAmount mDstAmount;
     Currency mSrcCurrency;
-    boost::optional<AccountID> mSrcIssuer;
+    boost::optional<Account> mSrcIssuer;
     STAmount mSrcAmount;
     /** The amount remaining from mSrcAccount after the default liquidity has
         been removed. */
     STAmount mRemainingAmount;
-    bool convert_all_;
 
-    std::shared_ptr <ReadView const> mLedger;
+    Ledger::pointer mLedger;
     LoadEvent::pointer m_loadEvent;
     RippleLineCache::pointer mRLCache;
 
@@ -191,17 +196,14 @@ private:
 
     hash_map<Issue, int> mPathsOutCountMap;
 
-    Application& app_;
-    beast::Journal j_;
-
     // Add ripple paths
     static std::uint32_t const afADD_ACCOUNTS = 0x001;
 
     // Add order books
     static std::uint32_t const afADD_BOOKS = 0x002;
 
-    // Add order book to XRP only
-    static std::uint32_t const afOB_XRP = 0x010;
+    // Add order book to ICC only
+    static std::uint32_t const afOB_ICC = 0x010;
 
     // Must link to destination currency
     static std::uint32_t const afOB_LAST = 0x040;

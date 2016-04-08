@@ -47,7 +47,7 @@ enum Status
 };
 
 /** A batch of NodeObjects to write at once. */
-using Batch = std::vector <std::shared_ptr<NodeObject>>;
+typedef std::vector <NodeObject::Ptr> Batch;
 }
 }
 

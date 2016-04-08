@@ -20,26 +20,26 @@
 #ifndef RIPPLE_APP_MISC_VALIDATIONS_H_INCLUDED
 #define RIPPLE_APP_MISC_VALIDATIONS_H_INCLUDED
 
-#include <ripple/app/main/Application.h>
 #include <ripple/protocol/STValidation.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 #include <vector>
 
 namespace ripple {
 
-// VFALCO TODO rename and move these type aliases into the Validations interface
+// VFALCO TODO rename and move these typedefs into the Validations interface
 
 // nodes validating and highest node ID validating
-using ValidationSet = hash_map<NodeID, STValidation::pointer>;
+typedef hash_map<NodeID, STValidation::pointer> ValidationSet;
 
-using ValidationCounter = std::pair<int, NodeID>;
-using LedgerToValidationCounter = hash_map<uint256, ValidationCounter>;
-using ValidationVector = std::vector<STValidation::pointer>;
+typedef std::pair<int, NodeID> ValidationCounter;
+typedef hash_map<uint256, ValidationCounter> LedgerToValidationCounter;
+typedef std::vector<STValidation::pointer> ValidationVector;
 
 class Validations
 {
 public:
-    virtual ~Validations() = default;
+
+    virtual ~Validations () { }
 
     virtual bool addValidation (STValidation::ref, std::string const& source) = 0;
 
@@ -61,7 +61,7 @@ public:
     virtual int getNodesAfter (uint256 const& ledger) = 0;
     virtual int getLoadRatio (bool overLoaded) = 0;
 
-    // VFALCO TODO make a type alias for this ugly return value!
+    // VFALCO TODO make a typedef for this ugly return value!
     virtual LedgerToValidationCounter getCurrentValidations (
         uint256 currentLedger, uint256 previousLedger) = 0;
 
@@ -79,9 +79,7 @@ public:
     virtual void sweep () = 0;
 };
 
-extern
-std::unique_ptr<Validations>
-make_Validations(Application& app);
+std::unique_ptr <Validations> make_Validations ();
 
 } // ripple
 

@@ -20,7 +20,6 @@
 #ifndef RIPPLE_RPC_YIELD_H_INCLUDED
 #define RIPPLE_RPC_YIELD_H_INCLUDED
 
-#include <ripple/core/JobQueue.h>
 #include <ripple/json/Output.h>
 #include <beast/win32_workaround.h>
 #include <boost/coroutine/all.hpp>
@@ -28,31 +27,19 @@
 
 namespace ripple {
 
-class Application;
-class BasicConfig;
-class JobQueue;
 class Section;
 
 namespace RPC {
 
-/** See the README.md in this directory for more information about how
-    the RPC yield mechanism works.
- */
+/** Yield is a generic placeholder for a function that yields control of
+    execution - perhaps to another coroutine.
 
-/** Callback: do something and eventually return. Can't be empty. */
-using Callback = std::function <void ()>;
+    When code calls Yield, it might block for an indeterminate period of time.
 
-/** Continuation: do something, guarantee to eventually call Callback.
-    Can't be empty. */
-using Continuation = std::function <void (Callback const&)>;
-
-/** Suspend: suspend execution, pending completion of a Continuation.
-    Can't be empty. */
-using Suspend = std::function <void (Continuation const&)>;
-
-/** A non-empty Suspend that immediately calls its callback. */
-extern
-Suspend const dontSuspend;
+    By convention you must not be holding any locks or any resource that would
+    prevent any other task from making forward progress when you call Yield.
+*/
+using Yield = std::function <void ()>;
 
 /** Wrap an Output so it yields after approximately `chunkSize` bytes.
 
@@ -64,27 +51,26 @@ Suspend const dontSuspend;
     then never send more data.
  */
 Json::Output chunkedYieldingOutput (
-    Json::Output const&, Callback const&, std::size_t chunkSize);
+    Json::Output const&, Yield const&, std::size_t chunkSize);
 
 /** Yield every yieldCount calls.  If yieldCount is 0, never yield. */
 class CountedYield
 {
 public:
-    CountedYield (std::size_t yieldCount, Callback const& yield);
+    CountedYield (std::size_t yieldCount, Yield const& yield);
     void yield();
 
 private:
     std::size_t count_ = 0;
     std::size_t const yieldCount_;
-    Callback const yield_;
+    Yield const yield_;
 };
-
-enum class UseCoroutines {no, yes};
 
 /** When do we yield when performing a ledger computation? */
 struct YieldStrategy
 {
     enum class Streaming {no, yes};
+    enum class UseCoroutines {no, yes};
 
     /** Is the data streamed, or generated monolithically? */
     Streaming streaming = Streaming::no;
@@ -92,6 +78,10 @@ struct YieldStrategy
     /** Are results generated in a coroutine?  If this is no, then the code can
         never yield. */
     UseCoroutines useCoroutines = UseCoroutines::no;
+
+    /** How many bytes do we emit before yielding?  0 means "never yield due to
+        number of bytes sent". */
+    std::size_t byteYieldCount = 0;
 
     /** How many accounts do we process before yielding?  0 means "never yield
         due to number of accounts processed." */
@@ -102,32 +92,8 @@ struct YieldStrategy
     std::size_t transactionYieldCount = 0;
 };
 
-/** Does a BasicConfig require the use of coroutines? */
-UseCoroutines useCoroutines(BasicConfig const&);
-
-/** Create a yield strategy from a BasicConfig. */
-YieldStrategy makeYieldStrategy(BasicConfig const&);
-
-/** JobQueueSuspender is a suspend, with a yield that reschedules the job
-    on the job queue. */
-struct JobQueueSuspender
-{
-    /** Possibly suspend current execution. */
-    Suspend const suspend;
-
-    /** Possibly yield and restart on the job queue. */
-    Callback const yield;
-
-    /** Create a JobQueueSuspender where yield does nothing and the suspend
-        immediately executes the continuation. */
-    JobQueueSuspender(Application&);
-
-    /** Create a JobQueueSuspender with a Suspend.
-
-        When yield is called, it reschedules the current job on the JobQueue
-        with the given jobName. */
-    JobQueueSuspender(Application&, Suspend const&, std::string const& jobName);
-};
+/** Create a yield strategy from a configuration Section. */
+YieldStrategy makeYieldStrategy (Section const&);
 
 } // RPC
 } // ripple

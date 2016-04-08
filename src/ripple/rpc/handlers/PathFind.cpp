@@ -18,24 +18,13 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/NetworkOPs.h>
 #include <ripple/app/paths/PathRequests.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/resource/Fees.h>
-#include <ripple/rpc/Context.h>
 
 namespace ripple {
 
 Json::Value doPathFind (RPC::Context& context)
 {
-    if (context.app.config().PATH_SEARCH_MAX == 0)
-        return rpcError (rpcNOT_SUPPORTED);
-
-    auto lpLedger = context.ledgerMaster.getClosedLedger();
+    Ledger::pointer lpLedger = context.netOps.getClosedLedger();
 
     if (!context.params.isMember (jss::subcommand) ||
         !context.params[jss::subcommand].isString ())
@@ -46,13 +35,13 @@ Json::Value doPathFind (RPC::Context& context)
     if (!context.infoSub)
         return rpcError (rpcNO_EVENTS);
 
-    auto sSubCommand = context.params[jss::subcommand].asString ();
+    std::string sSubCommand = context.params[jss::subcommand].asString ();
 
     if (sSubCommand == "create")
     {
         context.loadType = Resource::feeHighBurdenRPC;
         context.infoSub->clearPathRequest ();
-        return context.app.getPathRequests().makePathRequest (
+        return getApp().getPathRequests().makePathRequest (
             context.infoSub, lpLedger, context.params);
     }
 

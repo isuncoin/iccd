@@ -18,13 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/basics/Log.h>
-#include <ripple/json/json_value.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
 #include <boost/algorithm/string/predicate.hpp>
 
 namespace ripple {
@@ -39,10 +32,10 @@ Json::Value doLogLevel (RPC::Context& context)
         Json::Value lev (Json::objectValue);
 
         lev[jss::base] =
-                Logs::toString(Logs::fromSeverity(context.app.logs().severity()));
+                Logs::toString(Logs::fromSeverity(deprecatedLogs().severity()));
         std::vector< std::pair<std::string, std::string> > logTable (
-            context.app.logs().partition_severities());
-        using stringPair = std::map<std::string, std::string>::value_type;
+            deprecatedLogs().partition_severities());
+        typedef std::map<std::string, std::string>::value_type stringPair;
         for (auto const& it : logTable)
             lev[it.first] = it.second;
 
@@ -61,7 +54,7 @@ Json::Value doLogLevel (RPC::Context& context)
     if (!context.params.isMember (jss::partition))
     {
         // set base log severity
-        context.app.logs().severity(severity);
+        deprecatedLogs().severity(severity);
         return Json::objectValue;
     }
 
@@ -72,9 +65,9 @@ Json::Value doLogLevel (RPC::Context& context)
         std::string partition (context.params[jss::partition].asString ());
 
         if (boost::iequals (partition, "base"))
-            context.app.logs().severity (severity);
+            deprecatedLogs().severity (severity);
         else
-            context.app.logs().get(partition).severity(severity);
+            deprecatedLogs().get(partition).severity(severity);
 
         return Json::objectValue;
     }

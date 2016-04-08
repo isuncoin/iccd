@@ -33,9 +33,9 @@ namespace ripple {
 
 struct LedgerFill
 {
-    LedgerFill (ReadView const& l,
+    LedgerFill (Ledger const& l,
                 int o = 0,
-                RPC::Callback const& y = {},
+                RPC::Yield const& y = {},
                 RPC::YieldStrategy const& ys = {})
             : ledger (l),
               options (o),
@@ -45,39 +45,204 @@ struct LedgerFill
     }
 
     enum Options {
-        dumpTxrp = 1, dumpState = 2, expand = 4, full = 8, binary = 16};
+        dumpTicc = 1, dumpState = 2, expand = 4, full = 8, binary = 16};
 
-    ReadView const& ledger;
+    Ledger const& ledger;
     int options;
-    RPC::Callback yield;
+    RPC::Yield yield;
     RPC::YieldStrategy yieldStrategy;
 };
 
-/** Given a Ledger and options, fill a Json::Object or Json::Value with a
-    description of the ledger.
- */
+/** Given a Ledger, options, and a generic Object that has Json semantics,
+    fill the Object with a description of the ledger.
+*/
+template <class Object>
+void fillJson (Object&, LedgerFill const&);
 
-void addJson(Json::Value&, LedgerFill const&);
-void addJson(Json::Object&, LedgerFill const&);
+/** Add Json to an existing generic Object. */
+template <class Object>
+void addJson (Object&, LedgerFill const&);
 
 /** Return a new Json::Value representing the ledger with given options.*/
 Json::Value getJson (LedgerFill const&);
 
-/** Serialize an object to a blob. */
-template <class Object>
-Blob serializeBlob(Object const& o)
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Implementations.
+
+template <typename Object>
+void fillJson (Object& json, LedgerFill const& fill)
 {
-    Serializer s;
-    o.add(s);
-    return s.peekData();
+    using namespace ripple::RPC;
+
+    auto const& ledger = fill.ledger;
+
+    bool const bFull (fill.options & LedgerFill::full);
+    bool const bExpand (fill.options & LedgerFill::expand);
+    bool const bBinary (fill.options & LedgerFill::binary);
+
+    // DEPRECATED
+    json[jss::seqNum]       = to_string (ledger.getLedgerSeq());
+    json[jss::parent_hash]  = to_string (ledger.getParentHash());
+    json[jss::ledger_index] = to_string (ledger.getLedgerSeq());
+
+    if (ledger.isClosed() || bFull)
+    {
+        if (ledger.isClosed())
+            json[jss::closed] = true;
+
+        // DEPRECATED
+        json[jss::hash] = to_string (ledger.getRawHash());
+
+        // DEPRECATED
+        json[jss::totalCoins]        = to_string (ledger.getTotalCoins());
+        json[jss::ledger_hash]       = to_string (ledger.getRawHash());
+        json[jss::transaction_hash]  = to_string (ledger.getTransHash());
+        json[jss::account_hash]      = to_string (ledger.getAccountHash());
+        json[jss::accepted]          = ledger.isAccepted();
+        json[jss::total_coins]       = to_string (ledger.getTotalCoins());
+
+        auto closeTime = ledger.getCloseTimeNC();
+        if (closeTime != 0)
+        {
+            json[jss::close_time]            = closeTime;
+            json[jss::close_time_human]
+                    = boost::posix_time::to_simple_string (
+                        ptFromSeconds (closeTime));
+            json[jss::close_time_resolution] = ledger.getCloseResolution();
+
+            if (!ledger.getCloseAgree())
+                json[jss::close_time_estimated] = true;
+        }
+    }
+    else
+    {
+        json[jss::closed] = false;
+    }
+
+    auto &transactionMap = ledger.peekTransactionMap();
+    if (transactionMap && (bFull || fill.options & LedgerFill::dumpTicc))
+    {
+        auto&& txns = setArray (json, jss::transactions);
+        SHAMapTreeNode::TNType type;
+
+        CountedYield count (
+            fill.yieldStrategy.transactionYieldCount, fill.yield);
+        for (auto item = transactionMap->peekFirstItem (type); item;
+             item = transactionMap->peekNextItem (item->getTag (), type))
+        {
+            count.yield();
+            if (bFull || bExpand)
+            {
+                if (type == SHAMapTreeNode::tnTRANSACTION_NM)
+                {
+                     if (bBinary)
+                    {
+                        auto&& obj = appendObject (txns);
+                        obj[jss::tx_blob] = strHex (item->peekData ());
+                    }
+                    else
+                    {
+                        SerialIter sit (item->peekSerializer ());
+                        STTx txn (sit);
+                        txns.append (txn.getJson (0));
+                    }
+                }
+                else if (type == SHAMapTreeNode::tnTRANSACTION_MD)
+                {
+                    if (bBinary)
+                    {
+                        SerialIter sit (item->peekSerializer ());
+
+                        auto&& obj = appendObject (txns);
+                        obj[jss::tx_blob] = strHex (sit.getVL ());
+                        obj[jss::meta] = strHex (sit.getVL ());
+                    }
+                    else
+                    {
+                        SerialIter sit (item->peekSerializer ());
+                        Serializer sTxn (sit.getVL ());
+
+                        SerialIter tsit (sTxn);
+                        STTx txn (tsit);
+
+                        TransactionMetaSet meta (
+                            item->getTag (), ledger.getLedgerSeq(), sit.getVL ());
+
+                        auto&& txJson = appendObject (txns);
+                        copyFrom(txJson, txn.getJson (0));
+                        txJson[jss::metaData] = meta.getJson (0);
+                    }
+                }
+                else
+                {
+                    auto&& error = appendObject (txns);
+                    error[to_string (item->getTag ())] = (int) type;
+                }
+            }
+            else
+            {
+                txns.append (to_string (item->getTag ()));
+            }
+        }
+    }
+
+    auto& accountStateMap = ledger.peekAccountStateMap();
+    if (accountStateMap && (bFull || fill.options & LedgerFill::dumpState))
+    {
+        auto&& array = Json::setArray (json, jss::accountState);
+        RPC::CountedYield count (
+            fill.yieldStrategy.accountYieldCount, fill.yield);
+        if (bFull || bExpand)
+        {
+             if (bBinary)
+             {
+                 ledger.peekAccountStateMap()->visitLeaves (
+                     [&array] (std::shared_ptr<SHAMapItem> const& smi)
+                     {
+                         auto&& obj = appendObject (array);
+                         obj[jss::hash] = to_string(smi->getTag ());
+                         obj[jss::tx_blob] = strHex(smi->peekData ());
+                     });
+             }
+             else
+             {
+                 ledger.visitStateItems (
+                     [&array, &count] (SLE::ref sle)
+                     {
+                         count.yield();
+                         array.append (sle->getJson(0));
+                     });
+             }
+        }
+        else
+        {
+            accountStateMap->visitLeaves(
+                [&array, &count] (std::shared_ptr<SHAMapItem> const& smi)
+                {
+                    count.yield();
+                    array.append (to_string(smi->getTag ()));
+                });
+        }
+    }
 }
 
-/** Serialize an object to a hex string. */
-inline
-std::string serializeHex(STObject const& o)
+/** Add Json to an existing generic Object. */
+template <class Object>
+void addJson (Object& json, LedgerFill const& fill)
 {
-    return strHex(serializeBlob(o));
+    auto&& object = Json::addObject (json, jss::ledger);
+    fillJson (object, fill);
 }
+
+inline
+Json::Value getJson (LedgerFill const& fill)
+{
+    Json::Value json;
+    fillJson (json, fill);
+    return json;
+}
+
 } // ripple
 
 #endif

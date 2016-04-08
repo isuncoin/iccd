@@ -45,12 +45,11 @@ static
 std::uint64_t const
 SYSTEM_CURRENCY_USERS = 100000000;
 
-/** Number of drops per 1 XRP */
 static
 std::uint64_t const
 SYSTEM_CURRENCY_PARTS = 1000000;
 
-/** Number of drops in the genesis account. */
+/** Calculate the amount of native currency created at genesis. */
 static
 std::uint64_t const
 SYSTEM_CURRENCY_START = SYSTEM_CURRENCY_GIFT * SYSTEM_CURRENCY_USERS * SYSTEM_CURRENCY_PARTS;
@@ -60,7 +59,7 @@ static inline
 std::string const&
 systemCurrencyCode ()
 {
-    static std::string const code = "XRP";
+    static std::string const code = "ICC";
     return code;
 }
 

@@ -29,13 +29,11 @@ namespace ripple {
 class CollectorManager
 {
 public:
-    static std::unique_ptr<CollectorManager> New (
-        Section const& params, beast::Journal journal);
-
+    static CollectorManager* New (Section const& params,
+        beast::Journal journal);
     virtual ~CollectorManager () = 0;
     virtual beast::insight::Collector::ptr const& collector () = 0;
-    virtual beast::insight::Group::ptr const& group (
-        std::string const& name) = 0;
+    virtual beast::insight::Group::ptr const& group (std::string const& name) = 0;
 };
 
 }

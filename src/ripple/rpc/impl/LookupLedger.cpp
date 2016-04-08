@@ -18,46 +18,37 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/basics/Log.h>
-#include <ripple/json/json_value.h>
-#include <ripple/ledger/View.h>
-#include <ripple/rpc/Context.h>
 #include <ripple/rpc/impl/LookupLedger.h>
-#include <ripple/rpc/impl/Tuning.h>
 
 namespace ripple {
 namespace RPC {
 
 namespace {
 
-bool isValidatedOld (LedgerMaster& ledgerMaster, bool standalone)
+bool isValidatedOld ()
 {
-    if (standalone)
+    if (getConfig ().RUN_STANDALONE)
         return false;
 
-    return ledgerMaster.getValidatedLedgerAge () >
+    return getApp ().getLedgerMaster ().getValidatedLedgerAge () >
         Tuning::maxValidatedLedgerAge;
 }
 
-template <class T>
-Status ledgerFromRequest (T& ledger, Context& context)
+Status ledgerFromRequest (
+    Json::Value const& params,
+    Ledger::pointer& ledger,
+    NetworkOPs& netOps)
 {
     static auto const minSequenceGap = 10;
 
     ledger.reset();
-
-    auto& params = context.params;
-    auto& ledgerMaster = context.ledgerMaster;
 
     auto indexValue = params[jss::ledger_index];
     auto hashValue = params[jss::ledger_hash];
 
     // We need to support the legacy "ledger" field.
     auto& legacyLedger = params[jss::ledger];
-    if (legacyLedger)
+    if (!legacyLedger.empty())
     {
         if (legacyLedger.asString().size () > 12)
             hashValue = legacyLedger;
@@ -65,7 +56,7 @@ Status ledgerFromRequest (T& ledger, Context& context)
             indexValue = legacyLedger;
     }
 
-    if (hashValue)
+    if (!hashValue.empty())
     {
         if (! hashValue.isString ())
             return {rpcINVALID_PARAMS, "ledgerHashNotString"};
@@ -74,26 +65,18 @@ Status ledgerFromRequest (T& ledger, Context& context)
         if (! ledgerHash.SetHex (hashValue.asString ()))
             return {rpcINVALID_PARAMS, "ledgerHashMalformed"};
 
-        ledger = ledgerMaster.getLedgerByHash (ledgerHash);
+        ledger = netOps.getLedgerByHash (ledgerHash);
         if (ledger == nullptr)
             return {rpcLGR_NOT_FOUND, "ledgerNotFound"};
     }
     else if (indexValue.isNumeric())
     {
-        ledger = ledgerMaster.getLedgerBySeq (indexValue.asInt ());
-
-        if (ledger == nullptr)
-        {
-            auto cur = ledgerMaster.getCurrentLedger();
-            if (cur->info().seq == indexValue.asInt())
-                ledger = cur;
-        }
-
+        ledger = netOps.getLedgerBySeq (indexValue.asInt ());
         if (ledger == nullptr)
             return {rpcLGR_NOT_FOUND, "ledgerNotFound"};
 
-        if (ledger->info().seq > ledgerMaster.getValidLedgerIndex() &&
-            isValidatedOld(ledgerMaster, context.app.config().RUN_STANDALONE))
+        if (ledger->getLedgerSeq () > netOps.getValidatedSeq () &&
+            isValidatedOld ())
         {
             ledger.reset();
             return {rpcNO_NETWORK, "InsufficientNetworkMode"};
@@ -101,29 +84,29 @@ Status ledgerFromRequest (T& ledger, Context& context)
     }
     else
     {
-        if (isValidatedOld (ledgerMaster, context.app.config().RUN_STANDALONE))
+        if (isValidatedOld ())
             return {rpcNO_NETWORK, "InsufficientNetworkMode"};
 
         auto const index = indexValue.asString ();
         if (index == "validated")
         {
-            ledger = ledgerMaster.getValidatedLedger ();
+            ledger = netOps.getValidatedLedger ();
             if (ledger == nullptr)
                 return {rpcNO_NETWORK, "InsufficientNetworkMode"};
 
-            assert (! ledger->info().open);
+            assert (ledger->isClosed ());
         }
         else
         {
             if (index.empty () || index == "current")
             {
-                ledger = ledgerMaster.getCurrentLedger ();
-                assert (ledger->info().open);
+                ledger = netOps.getCurrentLedger ();
+                assert (! ledger->isClosed ());
             }
             else if (index == "closed")
             {
-                ledger = ledgerMaster.getClosedLedger ();
-                assert (! ledger->info().open);
+                ledger = netOps.getClosedLedger ();
+                assert (ledger->isClosed ());
             }
             else
             {
@@ -133,59 +116,47 @@ Status ledgerFromRequest (T& ledger, Context& context)
             if (ledger == nullptr)
                 return {rpcNO_NETWORK, "InsufficientNetworkMode"};
 
-            if (ledger->info().seq + minSequenceGap <
-                ledgerMaster.getValidLedgerIndex ())
+            if (ledger->getLedgerSeq () + minSequenceGap <
+                netOps.getValidatedSeq ())
             {
                 ledger.reset ();
                 return {rpcNO_NETWORK, "InsufficientNetworkMode"};
             }
         }
+
+        assert (ledger->isImmutable ());
     }
 
     return Status::OK;
 }
 
-bool isValidated (LedgerMaster& ledgerMaster, ReadView const& ledger,
-    Application& app)
+bool isValidated (Ledger& ledger)
 {
-    if (ledger.info().open)
-        return false;
-
-    if (ledger.info().validated)
+    if (ledger.isValidated ())
         return true;
 
-    auto seq = ledger.info().seq;
+    if (!ledger.isClosed ())
+        return false;
+
+    auto seq = ledger.getLedgerSeq();
     try
     {
         // Use the skip list in the last validated ledger to see if ledger
         // comes before the last validated ledger (and thus has been
         // validated).
-        auto hash = ledgerMaster.walkHashBySeq (seq);
-
-        if (ledger.info().hash != hash)
-        {
-            // This ledger's hash is not the hash of the validated ledger
-            if (hash.isNonZero ())
-            {
-                uint256 valHash = getHashByIndex (seq, app);
-                if (valHash == ledger.info().hash)
-                {
-                    // SQL database doesn't match ledger chain
-                    ledgerMaster.clearLedger (seq);
-                }
-            }
+        auto hash = getApp().getLedgerMaster ().walkHashBySeq (seq);
+        if (ledger.getHash() != hash)
             return false;
-        }
     }
     catch (SHAMapMissingNode const&)
     {
-        JLOG (app.journal ("RPCHandler").warning)
+        WriteLog (lsWARNING, RPCHandler)
                 << "Missing SHANode " << std::to_string (seq);
         return false;
     }
 
     // Mark ledger as validated to save time if we see it again.
-    ledger.info().validated = true;
+    ledger.setValidated();
     return true;
 }
 
@@ -211,36 +182,37 @@ bool isValidated (LedgerMaster& ledgerMaster, ReadView const& ledger,
 // optionally the fields "ledger_hash", "ledger_index" and
 // "ledger_current_index", if they are defined.
 Status lookupLedger (
-    std::shared_ptr<ReadView const>& ledger, Context& context,
-    Json::Value& result)
+    Json::Value const& params,
+    Ledger::pointer& ledger,
+    NetworkOPs& netOps,
+    Json::Value& jsonResult)
 {
-    if (auto status = ledgerFromRequest (ledger, context))
+    if (auto status = ledgerFromRequest (params, ledger, netOps))
         return status;
 
-    auto& info = ledger->info();
-
-    if (!info.open)
+    if (ledger->isClosed ())
     {
-        result[jss::ledger_hash] = to_string (info.hash);
-        result[jss::ledger_index] = info.seq;
+        jsonResult[jss::ledger_hash] = to_string (ledger->getHash());
+        jsonResult[jss::ledger_index] = ledger->getLedgerSeq();
     }
     else
     {
-        result[jss::ledger_current_index] = info.seq;
+        jsonResult[jss::ledger_current_index] = ledger->getLedgerSeq();
     }
-
-    result[jss::validated] = isValidated (context.ledgerMaster, *ledger, context.app);
+    jsonResult[jss::validated] = isValidated (*ledger);
     return Status::OK;
 }
 
 Json::Value lookupLedger (
-    std::shared_ptr<ReadView const>& ledger, Context& context)
+    Json::Value const& params,
+    Ledger::pointer& ledger,
+    NetworkOPs& netOps)
 {
-    Json::Value result;
-    if (auto status = lookupLedger (ledger, context, result))
-        status.inject (result);
+    Json::Value value (Json::objectValue);
+    if (auto status = lookupLedger (params, ledger, netOps, value))
+        status.inject (value);
 
-    return result;
+    return value;
 }
 
 } // RPC

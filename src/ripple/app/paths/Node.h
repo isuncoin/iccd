@@ -29,7 +29,7 @@ namespace path {
 
 struct Node
 {
-    using List = std::vector<Node>;
+    typedef std::vector<Node> List;
 
     inline bool isAccount() const
     {
@@ -42,7 +42,7 @@ struct Node
 
     std::uint16_t uFlags;       // --> From path.
 
-    AccountID account_;           // --> Accounts: Receiving/sending account.
+    Account account_;           // --> Accounts: Receiving/sending account.
 
     Issue issue_;               // --> Accounts: Receive and send, Offers: send.
                                 // --- For offer's next has currency out.
@@ -87,7 +87,7 @@ struct Node
     unsigned int uEntry;
     uint256 offerIndex_;
     SLE::pointer sleOffer;
-    AccountID offerOwnerAccount_;
+    Account offerOwnerAccount_;
 
     // Do we need to refresh saOfferFunds, saTakerPays, & saTakerGets?
     bool bFundsDirty;

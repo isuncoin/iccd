@@ -81,33 +81,17 @@ LedgerFormats::LedgerFormats ()
             << SOElement (sfHighQualityOut,      SOE_OPTIONAL)
             ;
 
-    add ("SuspendedPayment", ltSUSPAY) <<
-        SOElement (sfAccount,           SOE_REQUIRED) <<
-        SOElement (sfDestination,       SOE_REQUIRED) <<
-        SOElement (sfAmount,            SOE_REQUIRED) <<
-        SOElement (sfDigest,            SOE_OPTIONAL) <<
-        SOElement (sfCancelAfter,       SOE_OPTIONAL) <<
-        SOElement (sfFinishAfter,       SOE_OPTIONAL) <<
-        SOElement (sfSourceTag,         SOE_OPTIONAL) <<
-        SOElement (sfDestinationTag,    SOE_OPTIONAL) <<
-        SOElement (sfOwnerNode,         SOE_REQUIRED) <<
-        SOElement (sfPreviousTxnID,     SOE_REQUIRED) <<
-        SOElement (sfPreviousTxnLgrSeq, SOE_REQUIRED);
-
     add ("LedgerHashes", ltLEDGER_HASHES)
             << SOElement (sfFirstLedgerSequence, SOE_OPTIONAL) // Remove if we do a ledger restart
             << SOElement (sfLastLedgerSequence,  SOE_OPTIONAL)
             << SOElement (sfHashes,              SOE_REQUIRED)
             ;
 
-    add ("Amendments", ltAMENDMENTS)
-            << SOElement (sfLedgerSequence,      SOE_OPTIONAL)
-            << SOElement (sfAmendments,          SOE_OPTIONAL) // Enabled
-            << SOElement (sfMajorities,          SOE_OPTIONAL)
+    add ("EnabledAmendments", ltAMENDMENTS)
+            << SOElement (sfAmendments, SOE_REQUIRED)
             ;
 
     add ("FeeSettings", ltFEE_SETTINGS)
-            << SOElement (sfLedgerSequence,      SOE_OPTIONAL)
             << SOElement (sfBaseFee,             SOE_REQUIRED)
             << SOElement (sfReferenceFeeUnits,   SOE_REQUIRED)
             << SOElement (sfReserveBase,         SOE_REQUIRED)
@@ -120,17 +104,6 @@ LedgerFormats::LedgerFormats ()
             << SOElement (sfOwnerNode,           SOE_REQUIRED)
             << SOElement (sfTarget,              SOE_OPTIONAL)
             << SOElement (sfExpiration,          SOE_OPTIONAL)
-            ;
-
-    // All fields are SOE_REQUIRED because there is always a
-    // SignerEntries.  If there are no SignerEntries the node is deleted.
-    add ("SignerList", ltSIGNER_LIST)
-            << SOElement (sfOwnerNode,           SOE_REQUIRED)
-            << SOElement (sfSignerQuorum,        SOE_REQUIRED)
-            << SOElement (sfSignerEntries,       SOE_REQUIRED)
-            << SOElement (sfSignerListID,        SOE_REQUIRED)
-            << SOElement (sfPreviousTxnID,       SOE_REQUIRED)
-            << SOElement (sfPreviousTxnLgrSeq,   SOE_REQUIRED)
             ;
 }
 

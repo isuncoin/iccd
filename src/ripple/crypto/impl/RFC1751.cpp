@@ -271,13 +271,12 @@ unsigned long RFC1751::extract (char const* s, int start, int length)
     assert (length >= 0);
     assert (start + length <= 66);
 
-    int const shiftR = 24 - (length + (start % 8));
     cl = s[start / 8];                      // get components
-    cc = (shiftR < 16) ? s[start / 8 + 1] : 0;
-    cr = (shiftR < 8) ? s[start / 8 + 2] : 0;
+    cc = s[start / 8 + 1];
+    cr = s[start / 8 + 2];
 
     x = ((long) (cl << 8 | cc) << 8 | cr) ; // Put bits together
-    x = x >> shiftR; // Right justify number
+    x = x >> (24 - (length + (start % 8))); // Right justify number
     x = ( x & (0xffff >> (16 - length) ) ); // Trim extra bits.
 
     return x;

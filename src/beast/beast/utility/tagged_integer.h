@@ -22,6 +22,8 @@
 
 #include <beast/hash/hash_append.h>
 
+#include <beast/utility/noexcept.h>
+
 #include <functional>
 #include <iostream>
 #include <type_traits>
@@ -43,14 +45,16 @@ template <class Int, class Tag>
 class tagged_integer
 {
 private:
+    friend struct is_contiguously_hashable<tagged_integer <Int, Tag>>;
+
     static_assert (std::is_unsigned <Int>::value,
         "The specified Int type must be unsigned");
 
     Int m_value;
 
 public:
-    using value_type = Int;
-    using tag_type = Tag;
+    typedef Int value_type;
+    typedef Tag tag_type;
 
     tagged_integer() = default;
 
@@ -231,9 +235,9 @@ public:
     }
 };
 
-template <class Int, class Tag, class HashAlgorithm>
-struct is_contiguously_hashable<tagged_integer<Int, Tag>, HashAlgorithm>
-    : public is_contiguously_hashable<Int, HashAlgorithm>
+template <class Int, class Tag>
+struct is_contiguously_hashable<tagged_integer<Int, Tag>>
+    : public is_contiguously_hashable<Int>
 {
 };
 

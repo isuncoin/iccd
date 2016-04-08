@@ -23,20 +23,22 @@
 namespace ripple {
 namespace RPC {
 
-hash_set<AccountID>
-parseAccountIds (Json::Value const& jvArray)
+hash_set<RippleAddress> parseAccountIds (Json::Value const& jvArray)
 {
-    hash_set<AccountID> result;
+    hash_set<RippleAddress> result;
+
     for (auto const& jv: jvArray)
     {
-        if (! jv.isString())
-            return hash_set<AccountID>();
-        auto const id =
-            parseBase58<AccountID>(jv.asString());
-        if (! id)
-            return hash_set<AccountID>();
-        result.insert(*id);
+        RippleAddress address;
+
+        if (!(jv.isString () && address.setAccountID ((jv.asString ()))))
+        {
+            result.clear ();
+            break;
+        }
+        result.insert (address);
     }
+
     return result;
 }
 

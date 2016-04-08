@@ -35,21 +35,7 @@ namespace ripple {
 // Used as the type of a transaction or the type of a ledger entry.
 enum LedgerEntryType
 {
-    /** Special type, anything
-        This is used when the type in the Keylet is unknown,
-        such as when building metadata.
-    */
-    ltANY = -3,
-
-    /** Special type, anything not a directory
-        This is used when the type in the Keylet is unknown,
-        such as when iterating
-    */
-    ltCHILD             = -2,
-
     ltINVALID           = -1,
-
-    //---------------------------------------------------------------------------
 
     ltACCOUNT_ROOT      = 'a',
 
@@ -64,12 +50,13 @@ enum LedgerEntryType
     */
     ltDIR_NODE          = 'd',
 
+    /** Describes a trust line.
+    */
     ltRIPPLE_STATE      = 'r',
 
     ltTICKET            = 'T',
 
-    ltSIGNER_LIST       = 'S',
-
+    /* Deprecated. */
     ltOFFER             = 'o',
 
     ltLEDGER_HASHES     = 'h',
@@ -77,8 +64,6 @@ enum LedgerEntryType
     ltAMENDMENTS        = 'f',
 
     ltFEE_SETTINGS      = 's',
-
-    ltSUSPAY            = 'u',
 
     // No longer used or supported. Left here to prevent accidental
     // reassignment of the ledger type.
@@ -102,11 +87,9 @@ enum LedgerNameSpace
     spaceBookDir        = 'B',  // Directory of order books.
     spaceContract       = 'c',
     spaceSkipList       = 's',
-    spaceSusPay         = 'u',
     spaceAmendment      = 'f',
     spaceFee            = 'e',
     spaceTicket         = 'T',
-    spaceSignerList     = 'S',
 
     // No longer used or supported. Left here to reserve the space and
     // avoid accidental reuse of the space.
@@ -122,7 +105,7 @@ enum LedgerSpecificFlags
     lsfPasswordSpent    = 0x00010000,   // True, if password set fee is spent.
     lsfRequireDestTag   = 0x00020000,   // True, to require a DestinationTag for payments.
     lsfRequireAuth      = 0x00040000,   // True, to require a authorization to hold IOUs.
-    lsfDisallowXRP      = 0x00080000,   // True, to disallow sending XRP.
+    lsfDisallowICC      = 0x00080000,   // True, to disallow sending ICC.
     lsfDisableMaster    = 0x00100000,   // True, force regular key
     lsfNoFreeze         = 0x00200000,   // True, cannot freeze ripple states
     lsfGlobalFreeze     = 0x00400000,   // True, all assets frozen

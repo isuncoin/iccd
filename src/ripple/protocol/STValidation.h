@@ -37,8 +37,8 @@ class STValidation final
 public:
     static char const* getCountedObjectName () { return "STValidation"; }
 
-    using pointer = std::shared_ptr<STValidation>;
-    using ref     = const std::shared_ptr<STValidation>&;
+    typedef std::shared_ptr<STValidation>         pointer;
+    typedef const std::shared_ptr<STValidation>&  ref;
 
     enum
     {
@@ -87,9 +87,8 @@ public:
     }
     Blob    getSigned ()                 const;
     Blob    getSignature ()              const;
-
-    // Signs the validation and returns the signing hash
-    uint256 sign (const RippleAddress & raPrivate);
+    void sign (uint256 & signingHash, const RippleAddress & raPrivate);
+    void sign (const RippleAddress & raPrivate);
 
     // The validation this replaced
     uint256 const& getPreviousHash ()

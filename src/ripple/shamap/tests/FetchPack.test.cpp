@@ -20,7 +20,6 @@
 #include <BeastConfig.h>
 #include <ripple/shamap/SHAMap.h>
 #include <ripple/shamap/tests/common.h>
-#include <ripple/protocol/digest.h>
 #include <ripple/basics/StringUtilities.h>
 #include <ripple/basics/UnorderedContainers.h>
 #include <ripple/protocol/UInt160.h>
@@ -30,6 +29,7 @@
 #include <stdexcept>
 
 namespace ripple {
+namespace shamap {
 namespace tests {
 
 class FetchPack_test : public beast::unit_test::suite
@@ -41,9 +41,9 @@ public:
         tableItemsExtra = 20
     };
 
-    using Map   = hash_map <uint256, Blob>;
+    using Map = hash_map <uint256, Blob> ;
     using Table = SHAMap;
-    using Item  = SHAMapItem;
+    using Item = SHAMapItem;
 
     struct Handler
     {
@@ -89,7 +89,7 @@ public:
         for (int d = 0; d < 3; ++d)
             s.add32 (r.nextInt ());
         return std::make_shared <Item> (
-            s.getSHA512Half(), s.peekData ());
+            to256(s.getRIPEMD160()), s.peekData ());
     }
 
     void
@@ -107,8 +107,8 @@ public:
 
     void on_fetch (Map& map, uint256 const& hash, Blob const& blob)
     {
-        expect (sha512Half(makeSlice(blob)) == hash,
-            "Hash mismatch");
+        Serializer s (blob);
+        expect (s.getSHA512Half() == hash, "Hash mismatch");
         map.emplace (hash, blob);
     }
 
@@ -117,7 +117,7 @@ public:
         beast::Journal const j;                            // debug journal
         TestFamily f(j);
         std::shared_ptr <Table> t1 (std::make_shared <Table> (
-            SHAMapType::FREE, f));
+            SHAMapType::FREE, f, beast::Journal()));
 
         pass ();
 
@@ -163,5 +163,6 @@ public:
 BEAST_DEFINE_TESTSUITE(FetchPack,shamap,ripple);
 
 } // tests
+} // shamap
 } // ripple
 

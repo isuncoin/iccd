@@ -21,9 +21,10 @@
 #ifndef BEAST_HASH_FNV1A_H_INCLUDED
 #define BEAST_HASH_FNV1A_H_INCLUDED
 
+#include <beast/utility/noexcept.h>
 #include <cstddef>
 #include <cstdint>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 
 namespace beast {
 
@@ -49,7 +50,7 @@ public:
     }
 
     void
-    operator() (void const* key, std::size_t len) noexcept
+    append (void const* key, std::size_t len) noexcept
     {
         unsigned char const* p =
             static_cast<unsigned char const*>(key);

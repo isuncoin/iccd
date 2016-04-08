@@ -46,10 +46,12 @@ std::string getHTTPHeaderTimestamp ()
 }
 
 void HTTPReply (
-    int nStatus, std::string const& content, Json::Output const& output, beast::Journal j)
+    int nStatus, std::string const& content, Json::Output const& output)
 {
-    JLOG (j.trace)
-        << "HTTP Reply " << nStatus << " " << content;
+    if (ShouldLog (lsTRACE, RPC))
+    {
+        WriteLog (lsTRACE, RPC) << "HTTP Reply " << nStatus << " " << content;
+    }
 
     if (nStatus == 401)
     {
@@ -99,7 +101,7 @@ void HTTPReply (
             "Content-Length: ");
 
     // VFALCO TODO Determine if/when this header should be added
-    //if (context.app.config().RPC_ALLOW_REMOTE)
+    //if (getConfig ().RPC_ALLOW_REMOTE)
     //    output ("Access-Control-Allow-Origin: *\r\n");
 
     output (std::to_string(content.size () + 2));

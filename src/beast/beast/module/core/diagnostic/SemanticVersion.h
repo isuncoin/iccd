@@ -23,6 +23,8 @@
 #include <vector>
 #include <string>
 
+#include <beast/utility/noexcept.h>
+
 namespace beast {
 
 /** A Semantic Version number.
@@ -35,7 +37,7 @@ namespace beast {
 class SemanticVersion
 {
 public:
-    using identifier_list = std::vector<std::string>;
+    typedef std::vector<std::string> identifier_list;
 
     int majorVersion;
     int minorVersion;
@@ -58,7 +60,7 @@ public:
     std::string print () const;
 
     inline bool isRelease () const noexcept
-    {
+    { 
         return preReleaseIdentifiers.empty();
     }
     inline bool isPreRelease () const noexcept
@@ -73,8 +75,8 @@ public:
 int compare (SemanticVersion const& lhs, SemanticVersion const& rhs);
 
 inline bool
-operator== (SemanticVersion const& lhs, SemanticVersion const& rhs)
-{
+operator== (SemanticVersion const& lhs, SemanticVersion const& rhs) 
+{ 
     return compare (lhs, rhs) == 0;
 }
 

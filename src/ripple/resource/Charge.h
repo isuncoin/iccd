@@ -31,7 +31,7 @@ class Charge
 {
 public:
     /** The type used to hold a consumption charge. */
-    using value_type = int;
+    typedef int value_type;
 
     // A default constructed Charge has no way to get a label.  Delete
     Charge () = delete;

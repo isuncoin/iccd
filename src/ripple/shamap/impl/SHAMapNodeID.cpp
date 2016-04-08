@@ -21,6 +21,7 @@
 #include <ripple/shamap/SHAMapNodeID.h>
 #include <ripple/crypto/RandomNumbers.h>
 #include <beast/module/core/text/LexicalCast.h>
+#include <beast/utility/static_initializer.h>
 #include <boost/format.hpp>
 #include <cassert>
 #include <cstring>
@@ -52,8 +53,8 @@ SHAMapNodeID::Masks (int depth)
             entry[mask_size-1] = selector;
         }
     };
-    static masks_t const masks;
-    return masks.entry[depth];
+    static beast::static_initializer <masks_t> masks;
+    return masks->entry[depth];
 }
 
 // canonicalize the hash to a node ID for this depth
@@ -61,7 +62,7 @@ SHAMapNodeID::SHAMapNodeID (int depth, uint256 const& hash)
     : mNodeID (hash), mDepth (depth)
 {
     assert ((depth >= 0) && (depth < 65));
-    assert (mNodeID == (mNodeID & Masks(depth)));
+    mNodeID &= Masks(depth);
 }
 
 SHAMapNodeID::SHAMapNodeID (void const* ptr, int len)

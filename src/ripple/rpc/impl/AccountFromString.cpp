@@ -18,43 +18,41 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/json/json_value.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
 #include <ripple/rpc/impl/AccountFromString.h>
 
 namespace ripple {
 namespace RPC {
 
-boost::optional <AccountID> accountFromStringStrict (std::string const& account)
-{
-    boost::optional <AccountID> result;
-    RippleAddress naAccount;
-    if (naAccount.setAccountPublic (account))
-        result = calcAccountID (naAccount);
-    else
-        result = parseBase58<AccountID> (account);
-    return result;
-}
-
+// --> strIdent: public key, account ID, or regular seed.
+// --> bStrict: Only allow account id or public key.
+// <-- bIndex: true if iIndex > 0 and used the index.
+//
+// Returns a Json::objectValue, containing error information if there was one.
 Json::Value accountFromString (
-    AccountID& result, std::string const& strIdent, bool bStrict)
+    Ledger::ref lrLedger,
+    RippleAddress& naAccount,
+    bool& bIndex,
+    std::string const& strIdent,
+    int const iIndex,
+    bool const bStrict,
+    NetworkOPs& netOps)
 {
-    if (auto accountID = accountFromStringStrict (strIdent))
+    RippleAddress   naSeed;
+
+    if (naAccount.setAccountPublic (strIdent) ||
+        naAccount.setAccountID (strIdent))
     {
-        result = *accountID;
-        return Json::objectValue;
+        // Got the account.
+        bIndex = false;
+        return Json::Value (Json::objectValue);
     }
 
     if (bStrict)
     {
-        auto id = deprecatedParseBitcoinAccountID (strIdent);
-        return rpcError (id ? rpcACT_BITCOIN : rpcACT_MALFORMED);
+        auto success = naAccount.setAccountID (
+            strIdent, Base58::getBitcoinAlphabet ());
+        return rpcError (success ? rpcACT_BITCOIN : rpcACT_MALFORMED);
     }
-
-    RippleAddress   naSeed;
 
     // Otherwise, it must be a seed.
     if (!naSeed.setSeedGeneric (strIdent))
@@ -68,10 +66,10 @@ Json::Value accountFromString (
     // Generator maps don't exist.  Assume it is a master
     // generator.
 
-    RippleAddress naAccount;
-    naAccount.setAccountPublic (naGenerator, 0);
-    result = calcAccountID (naAccount);
-    return Json::objectValue;
+    bIndex  = !iIndex;
+    naAccount.setAccountPublic (naGenerator, iIndex);
+
+    return Json::Value (Json::objectValue);
 }
 
 } // RPC

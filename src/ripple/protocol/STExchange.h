@@ -28,7 +28,7 @@
 #include <ripple/protocol/STObject.h>
 #include <ripple/basics/Blob.h>
 #include <boost/optional.hpp>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -72,7 +72,7 @@ struct STExchange<STBlob, Slice>
     get (boost::optional<value_type>& t,
         STBlob const& u)
     {
-        t.emplace (u.data(), u.size());
+        t = boost::in_place(u.data(), u.size());
     }
 
     static
@@ -95,7 +95,7 @@ struct STExchange<STBlob, Buffer>
     get (boost::optional<Buffer>& t,
         STBlob const& u)
     {
-        t.emplace (
+        t = boost::in_place(
             u.data(), u.size());
     }
 

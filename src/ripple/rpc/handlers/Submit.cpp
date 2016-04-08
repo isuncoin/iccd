@@ -18,24 +18,10 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/misc/HashRouter.h>
-#include <ripple/app/misc/Transaction.h>
-#include <ripple/app/tx/apply.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/resource/Fees.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/TransactionSign.h>
+#include <ripple/basics/StringUtilities.h>
+#include <ripple/server/Role.h>
 
 namespace ripple {
-
-static NetworkOPs::FailHard getFailHard (RPC::Context const& context)
-{
-    return NetworkOPs::doFailHard (
-        context.params.isMember ("fail_hard")
-        && context.params["fail_hard"].asBool ());
-}
 
 // {
 //   tx_json: <object>,
@@ -47,16 +33,10 @@ Json::Value doSubmit (RPC::Context& context)
 
     if (!context.params.isMember (jss::tx_blob))
     {
-        auto const failType = getFailHard (context);
-
-        return RPC::transactionSubmit (
-        context.params,
-        failType,
-        context.role,
-        context.ledgerMaster.getValidatedLedgerAge(),
-        context.app,
-        context.ledgerMaster.getCurrentLedger(),
-        RPC::getProcessTxnFn (context.netOps));
+        bool bFailHard = context.params.isMember (jss::fail_hard)
+                && context.params[jss::fail_hard].asBool ();
+        return RPC::transactionSign (
+            context.params, true, bFailHard, context.netOps, context.role);
     }
 
     Json::Value jvResult;
@@ -66,38 +46,26 @@ Json::Value doSubmit (RPC::Context& context)
     if (!ret.second || !ret.first.size ())
         return rpcError (rpcINVALID_PARAMS);
 
-    SerialIter sitTrans (makeSlice(ret.first));
+    Serializer sTrans (ret.first);
+    SerialIter sitTrans (sTrans);
 
-    std::shared_ptr<STTx const> stpTrans;
+    STTx::pointer stpTrans;
 
     try
     {
-        stpTrans = std::make_shared<STTx const> (std::ref (sitTrans));
+        stpTrans = std::make_shared<STTx> (std::ref (sitTrans));
     }
     catch (std::exception& e)
     {
-        jvResult[jss::error]        = "invalidTransaction";
+        jvResult[jss::error]           = "invalidTransaction";
         jvResult[jss::error_exception] = e.what ();
 
         return jvResult;
     }
 
-    {
-        auto validity = checkValidity(context.app.getHashRouter(),
-            *stpTrans, context.ledgerMaster.getCurrentLedger()->rules(),
-                context.app.config());
-        if (validity.first != Validity::Valid)
-        {
-            jvResult[jss::error] = "invalidTransaction";
-            jvResult[jss::error_exception] = "fails local checks: " + validity.second;
-
-            return jvResult;
-        }
-    }
-
+    Transaction::pointer            tpTrans;
     std::string reason;
-    auto tpTrans = std::make_shared<Transaction> (
-        stpTrans, reason, context.app);
+    tpTrans = std::make_shared<Transaction> (stpTrans, Validate::YES, reason);
     if (tpTrans->getStatus() != NEW)
     {
         jvResult[jss::error]            = "invalidTransaction";
@@ -108,10 +76,10 @@ Json::Value doSubmit (RPC::Context& context)
 
     try
     {
-        auto const failType = getFailHard (context);
-
-        context.netOps.processTransaction (
-            tpTrans, context.role == Role::ADMIN, true, failType);
+        (void) context.netOps.processTransaction (
+            tpTrans, context.role == Role::ADMIN, true,
+            context.params.isMember (jss::fail_hard)
+            && context.params[jss::fail_hard].asBool ());
     }
     catch (std::exception& e)
     {

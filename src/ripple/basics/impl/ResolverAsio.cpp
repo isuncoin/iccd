@@ -28,7 +28,6 @@
 #include <cassert>
 #include <deque>
 #include <locale>
-#include <memory>
 
 namespace ripple {
 
@@ -37,7 +36,7 @@ class ResolverAsioImpl
     , public beast::asio::AsyncObject <ResolverAsioImpl>
 {
 public:
-    using HostAndPort = std::pair <std::string, std::string>;
+    typedef std::pair <std::string, std::string> HostAndPort;
 
     beast::Journal m_journal;
 
@@ -300,11 +299,11 @@ public:
 
 //-----------------------------------------------------------------------------
 
-std::unique_ptr<ResolverAsio> ResolverAsio::New (
+ResolverAsio *ResolverAsio::New (
     boost::asio::io_service& io_service,
     beast::Journal journal)
 {
-    return std::make_unique<ResolverAsioImpl> (io_service, journal);
+    return new ResolverAsioImpl (io_service, journal);
 }
 
 //-----------------------------------------------------------------------------

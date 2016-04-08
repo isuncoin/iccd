@@ -21,6 +21,7 @@
 #define RIPPLE_APP_MISC_SHAMAPSTORE_H_INCLUDED
 
 #include <ripple/app/ledger/Ledger.h>
+#include <ripple/app/tx/TransactionMaster.h>
 #include <ripple/core/Config.h>
 #include <ripple/nodestore/Manager.h>
 #include <ripple/nodestore/Scheduler.h>
@@ -28,8 +29,6 @@
 #include <beast/threads/Stoppable.h>
 
 namespace ripple {
-
-class TransactionMaster;
 
 /**
  * class to create database, launch online delete thread, and
@@ -45,6 +44,7 @@ public:
         bool advisoryDelete = false;
         std::uint32_t ledgerHistory = 0;
         Section nodeDatabase;
+        Section ephemeralNodeDatabase;
         std::string databasePath;
         std::uint32_t deleteBatch = 100;
         std::uint32_t backOff = 100;
@@ -80,15 +80,13 @@ SHAMapStore::Setup
 setup_SHAMapStore(Config const& c);
 
 std::unique_ptr<SHAMapStore>
-make_SHAMapStore(
-    Application& app,
-    SHAMapStore::Setup const& s,
-    beast::Stoppable& parent,
-    NodeStore::Scheduler& scheduler,
-    beast::Journal journal,
-    beast::Journal nodeStoreJournal,
-    TransactionMaster& transactionMaster,
-    BasicConfig const& conf);
+make_SHAMapStore(SHAMapStore::Setup const& s,
+        beast::Stoppable& parent,
+        NodeStore::Scheduler& scheduler,
+        beast::Journal journal,
+        beast::Journal nodeStoreJournal,
+        TransactionMaster& transactionMaster,
+        BasicConfig const& conf);
 }
 
 #endif

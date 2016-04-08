@@ -56,8 +56,8 @@ template <typename Context, typename ScopedType>
 class ScopedWrapperContext
 {
 public:
-    using context_type = Context;
-    using scoped_type = ScopedType;
+    typedef Context context_type;
+    typedef ScopedType scoped_type;
 
     class Scope
     {

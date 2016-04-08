@@ -27,58 +27,53 @@ class FindPaths::Impl {
 public:
     Impl (
         RippleLineCache::ref cache,
-        AccountID const& srcAccount,
-        AccountID const& dstAccount,
+        Account const& srcAccount,
+        Account const& dstAccount,
         STAmount const& dstAmount,
-        boost::optional<STAmount> const& srcAmount,
         int searchLevel,
         unsigned int maxPaths)
             : cache_ (cache),
               srcAccount_ (srcAccount),
               dstAccount_ (dstAccount),
               dstAmount_ (dstAmount),
-              srcAmount_ (srcAmount),
               searchLevel_ (searchLevel),
               maxPaths_ (maxPaths)
     {
     }
 
-    boost::optional<STPathSet>
-    findPathsForIssue (
+
+    bool findPathsForIssue (
         Issue const& issue,
-        STPathSet const& paths,
-        STPath& fullLiquidityPath,
-        Application& app)
+        STPathSet& pathsInOut,
+        STPath& fullLiquidityPath)
     {
-        if (auto& pathfinder = getPathFinder (issue.currency, app))
+        if (auto& pathfinder = getPathFinder (issue.currency))
         {
-            return pathfinder->getBestPaths (maxPaths_,
-                fullLiquidityPath, paths, issue.account);
+            pathsInOut = pathfinder->getBestPaths (
+                maxPaths_,  fullLiquidityPath, pathsInOut, issue.account);
+            return true;
         }
         assert (false);
-        return boost::none;
+        return false;
     }
 
 private:
     hash_map<Currency, std::unique_ptr<Pathfinder>> currencyMap_;
 
     RippleLineCache::ref cache_;
-    AccountID const srcAccount_;
-    AccountID const dstAccount_;
+    Account const srcAccount_;
+    Account const dstAccount_;
     STAmount const dstAmount_;
-    boost::optional<STAmount> const srcAmount_;
     int const searchLevel_;
     unsigned int const maxPaths_;
 
-    std::unique_ptr<Pathfinder> const&
-    getPathFinder (Currency const& currency, Application& app)
+    std::unique_ptr<Pathfinder> const& getPathFinder (Currency const& currency)
     {
         auto i = currencyMap_.find (currency);
         if (i != currencyMap_.end ())
             return i->second;
         auto pathfinder = std::make_unique<Pathfinder> (
-            cache_, srcAccount_, dstAccount_, currency,
-            boost::none, dstAmount_, srcAmount_, app);
+            cache_, srcAccount_, dstAccount_, currency, dstAmount_);
         if (pathfinder->findPaths (searchLevel_))
             pathfinder->computePathRanks (maxPaths_);
         else
@@ -92,42 +87,36 @@ private:
 
 FindPaths::FindPaths (
     RippleLineCache::ref cache,
-    AccountID const& srcAccount,
-    AccountID const& dstAccount,
+    Account const& srcAccount,
+    Account const& dstAccount,
     STAmount const& dstAmount,
-    boost::optional<STAmount> const& srcAmount,
     int level,
     unsigned int maxPaths)
         : impl_ (std::make_unique<Impl> (
-            cache, srcAccount, dstAccount,
-                dstAmount, srcAmount, level, maxPaths))
+              cache, srcAccount, dstAccount, dstAmount, level, maxPaths))
 {
 }
 
 FindPaths::~FindPaths() = default;
 
-boost::optional<STPathSet>
-FindPaths::findPathsForIssue (
+bool FindPaths::findPathsForIssue (
     Issue const& issue,
-    STPathSet const& paths,
-    STPath& fullLiquidityPath,
-    Application& app)
+    STPathSet& pathsInOut,
+    STPath& fullLiquidityPath)
 {
-    return impl_->findPathsForIssue (issue, paths, fullLiquidityPath, app);
+    return impl_->findPathsForIssue (issue, pathsInOut, fullLiquidityPath);
 }
 
-boost::optional<STPathSet>
-findPathsForOneIssuer (
+bool findPathsForOneIssuer (
     RippleLineCache::ref cache,
-    AccountID const& srcAccount,
-    AccountID const& dstAccount,
+    Account const& srcAccount,
+    Account const& dstAccount,
     Issue const& srcIssue,
     STAmount const& dstAmount,
     int searchLevel,
     unsigned int const maxPaths,
-    STPathSet const& paths,
-    STPath& fullLiquidityPath,
-    Application& app)
+    STPathSet& pathsInOut,
+    STPath& fullLiquidityPath)
 {
     Pathfinder pf (
         cache,
@@ -135,16 +124,14 @@ findPathsForOneIssuer (
         dstAccount,
         srcIssue.currency,
         srcIssue.account,
-        dstAmount,
-        boost::none,
-        app);
+        dstAmount);
 
-    if (! pf.findPaths(searchLevel))
-        return boost::none;
+    if (!pf.findPaths (searchLevel))
+        return false;
 
     pf.computePathRanks (maxPaths);
-    return pf.getBestPaths(maxPaths, fullLiquidityPath,
-        paths, srcIssue.account);
+    pathsInOut = pf.getBestPaths(maxPaths, fullLiquidityPath, pathsInOut, srcIssue.account);
+    return true;
 }
 
 void initializePathfinding ()

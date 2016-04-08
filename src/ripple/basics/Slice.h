@@ -20,35 +20,32 @@
 #ifndef RIPPLE_BASICS_SLICE_H_INCLUDED
 #define RIPPLE_BASICS_SLICE_H_INCLUDED
 
-#include <ripple/basics/strHex.h>
+#include <beast/utility/noexcept.h>
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <cstring>
-#include <stdexcept>
-#include <string>
-#include <vector>
-#include <type_traits>
 
 namespace ripple {
 
 /** An immutable linear range of bytes.
 
     A fully constructed Slice is guaranteed to be in a valid state.
-    A Slice is lightweight and copyable, it retains no ownership
-    of the underlying memory.
+    Default construction, construction from nullptr, and zero-byte
+    ranges are disallowed. A Slice is lightweight and copyable, it
+    retains no ownership of the underlying memory.
 */
 class Slice
 {
 private:
     std::uint8_t const* data_;
-    std::size_t size_ = 0;
+    std::size_t size_;
 
 public:
-    /** Default constructed Slice has length 0. */
-    Slice() = default;
+    // Disallowed
+    Slice() = delete;
 
     Slice (Slice const&) = default;
+    
     Slice& operator= (Slice const&) = default;
 
     /** Create a slice pointing to existing memory. */
@@ -57,18 +54,13 @@ public:
             std::uint8_t const*>(data))
         , size_ (size)
     {
-    }
-
-    /** Return `true` if the byte range is empty. */
-    bool
-    empty() const noexcept
-    {
-        return size_ == 0;
+        assert(data_ != nullptr);
+        assert(size_ > 0);
     }
 
     /** Returns the number of bytes in the storage.
 
-        This may be zero for an empty range.
+        This will never be zero.
     */
     std::size_t
     size() const noexcept
@@ -85,44 +77,14 @@ public:
     {
         return data_;
     }
-
-    /** Access raw bytes. */
-    std::uint8_t
-    operator[](std::size_t i) const noexcept
-    {
-        assert(i < size_);
-        return data_[i];
-    }
-
-    /** Advance the buffer. */
-    /** @{ */
-    Slice&
-    operator+= (std::size_t n)
-    {
-        if (n > size_)
-            throw std::domain_error("too small");
-        data_ += n;
-        size_ -= n;
-        return *this;
-    }
-
-    Slice
-    operator+ (std::size_t n) const
-    {
-        Slice temp = *this;
-        return temp += n;
-    }
-    /** @} */
 };
-
-//------------------------------------------------------------------------------
 
 template <class Hasher>
 inline
 void
 hash_append (Hasher& h, Slice const& v)
 {
-    h(v.data(), v.size());
+    h.append(v.data(), v.size());
 }
 
 inline
@@ -136,48 +98,12 @@ operator== (Slice const& lhs, Slice const& rhs) noexcept
 
 inline
 bool
-operator!= (Slice const& lhs, Slice const& rhs) noexcept
-{
-    return !(lhs == rhs);
-}
-
-inline
-bool
 operator< (Slice const& lhs, Slice const& rhs) noexcept
 {
     return std::lexicographical_compare(
         lhs.data(), lhs.data() + lhs.size(),
             rhs.data(), rhs.data() + rhs.size());
 }
-
-
-template <class Stream>
-Stream& operator<<(Stream& s, Slice const& v)
-{
-    s << strHex(v.data(), v.size());
-    return s;
-}
-
-template <class T, class Alloc>
-std::enable_if_t<
-    std::is_same<T, char>::value ||
-        std::is_same<T, unsigned char>::value,
-    Slice
->
-makeSlice (std::vector<T, Alloc> const& v)
-{
-    return Slice(v.data(), v.size());
-}
-
-template <class Traits, class Alloc>
-Slice
-makeSlice (std::basic_string<char, Traits, Alloc> const& s)
-{
-    return Slice(s.data(), s.size());
-}
-
-std::string
-strHex (Slice const& slice);
 
 } // ripple
 

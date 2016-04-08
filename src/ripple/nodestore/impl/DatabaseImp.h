@@ -23,12 +23,10 @@
 #include <ripple/nodestore/Database.h>
 #include <ripple/nodestore/Scheduler.h>
 #include <ripple/nodestore/impl/Tuning.h>
+#include <ripple/basics/TaggedCache.h>
 #include <ripple/basics/KeyCache.h>
 #include <ripple/basics/Log.h>
-#include <ripple/basics/chrono.h>
-#include <ripple/protocol/digest.h>
-#include <ripple/basics/Slice.h>
-#include <ripple/basics/TaggedCache.h>
+#include <ripple/basics/seconds_clock.h>
 #include <beast/threads/Thread.h>
 #include <ripple/nodestore/ScopedMetrics.h>
 #include <chrono>
@@ -42,18 +40,20 @@ namespace NodeStore {
 class DatabaseImp
     : public Database
 {
-private:
+public:
     beast::Journal m_journal;
     Scheduler& m_scheduler;
     // Persistent key/value storage.
     std::unique_ptr <Backend> m_backend;
-protected:
+    // Larger key/value storage, but not necessarily persistent.
+    std::unique_ptr <Backend> m_fastBackend;
+
     // Positive cache
     TaggedCache <uint256, NodeObject> m_cache;
 
     // Negative cache
     KeyCache <uint256> m_negCache;
-private:
+
     std::mutex                m_readLock;
     std::condition_variable   m_readCondVar;
     std::condition_variable   m_readGenCondVar;
@@ -62,18 +62,20 @@ private:
     std::vector <std::thread> m_readThreads;
     bool                      m_readShut;
     uint64_t                  m_readGen;        // current read generation
-public:
+
     DatabaseImp (std::string const& name,
                  Scheduler& scheduler,
                  int readThreads,
                  std::unique_ptr <Backend> backend,
+                 std::unique_ptr <Backend> fastBackend,
                  beast::Journal journal)
         : m_journal (journal)
         , m_scheduler (scheduler)
         , m_backend (std::move (backend))
+        , m_fastBackend (std::move (fastBackend))
         , m_cache ("NodeStore", cacheTargetSize, cacheTargetSeconds,
-            stopwatch(), journal)
-        , m_negCache ("NodeStore", stopwatch(),
+            get_seconds_clock (), deprecatedLogs().journal("TaggedCache"))
+        , m_negCache ("NodeStore", get_seconds_clock (),
             cacheTargetSize, cacheTargetSeconds)
         , m_readShut (false)
         , m_readGen (0)
@@ -115,11 +117,16 @@ public:
             m_backend->close();
             m_backend = nullptr;
         }
+        if (m_fastBackend)
+        {
+            m_fastBackend->close();
+            m_fastBackend = nullptr;
+        }
     }
 
     //------------------------------------------------------------------------------
 
-    bool asyncFetch (uint256 const& hash, std::shared_ptr<NodeObject>& object) override
+    bool asyncFetch (uint256 const& hash, NodeObject::pointer& object)
     {
         // See if the object is in cache
         object = m_cache.fetch (hash);
@@ -150,7 +157,7 @@ public:
 
     }
 
-    int getDesiredAsyncReadCount () override
+    int getDesiredAsyncReadCount ()
     {
         // We prefer a client not fill our cache
         // We don't want to push data out of the cache
@@ -158,7 +165,7 @@ public:
         return m_cache.getTargetSize() / asyncDivider;
     }
 
-    std::shared_ptr<NodeObject> fetch (uint256 const& hash) override
+    NodeObject::Ptr fetch (uint256 const& hash) override
     {
         ScopedMetrics::incrementThreadFetches ();
 
@@ -166,14 +173,14 @@ public:
     }
 
     /** Perform a fetch and report the time it took */
-    std::shared_ptr<NodeObject> doTimedFetch (uint256 const& hash, bool isAsync)
+    NodeObject::Ptr doTimedFetch (uint256 const& hash, bool isAsync)
     {
         FetchReport report;
         report.isAsync = isAsync;
         report.wentToDisk = false;
 
         auto const before = std::chrono::steady_clock::now();
-        std::shared_ptr<NodeObject> ret = doFetch (hash, report);
+        NodeObject::Ptr ret = doFetch (hash, report);
         report.elapsed = std::chrono::duration_cast <std::chrono::milliseconds>
             (std::chrono::steady_clock::now() - before);
 
@@ -183,11 +190,11 @@ public:
         return ret;
     }
 
-    std::shared_ptr<NodeObject> doFetch (uint256 const& hash, FetchReport &report)
+    NodeObject::Ptr doFetch (uint256 const& hash, FetchReport &report)
     {
         // See if the object already exists in the cache
         //
-        std::shared_ptr<NodeObject> obj = m_cache.fetch (hash);
+        NodeObject::Ptr obj = m_cache.fetch (hash);
 
         if (obj != nullptr)
             return obj;
@@ -197,7 +204,19 @@ public:
 
         // Check the database(s).
 
+        bool foundInFastBackend = false;
         report.wentToDisk = true;
+
+        // Check the fast backend database if we have one
+        //
+        if (m_fastBackend != nullptr)
+        {
+            obj = fetchInternal (*m_fastBackend, hash);
+
+            // If we found the object, avoid storing it again later.
+            if (obj != nullptr)
+                foundInFastBackend = true;
+        }
 
         // Are we still without an object?
         //
@@ -227,24 +246,37 @@ public:
             //
             m_cache.canonicalize (hash, obj);
 
-            // Since this was a 'hard' fetch, we will log it.
-            //
-            if (m_journal.trace) m_journal.trace <<
-                "HOS: " << hash << " fetch: in db";
+            if (! foundInFastBackend)
+            {
+                // If we have a fast back end, store it there for later.
+                //
+                if (m_fastBackend != nullptr)
+                {
+                    m_fastBackend->store (obj);
+                    ++m_storeCount;
+                    if (obj)
+                        m_storeSize += obj->getData().size();
+                }
+
+                // Since this was a 'hard' fetch, we will log it.
+                //
+                if (m_journal.trace) m_journal.trace <<
+                    "HOS: " << hash << " fetch: in db";
+            }
         }
 
         return obj;
     }
 
-    virtual std::shared_ptr<NodeObject> fetchFrom (uint256 const& hash)
+    virtual NodeObject::Ptr fetchFrom (uint256 const& hash)
     {
         return fetchInternal (*m_backend, hash);
     }
 
-    std::shared_ptr<NodeObject> fetchInternal (Backend& backend,
+    NodeObject::Ptr fetchInternal (Backend& backend,
         uint256 const& hash)
     {
-        std::shared_ptr<NodeObject> object;
+        NodeObject::Ptr object;
 
         Status const status = backend.fetch (hash.begin (), &object);
 
@@ -287,12 +319,12 @@ public:
                         uint256 const& hash,
                         Backend& backend)
     {
-        #if RIPPLE_VERIFY_NODEOBJECT_KEYS
-        assert (hash == sha512Hash(makeSlice(data)));
-        #endif
-
-        std::shared_ptr<NodeObject> object = NodeObject::createObject(
+        NodeObject::Ptr object = NodeObject::createObject(
             type, std::move(data), hash);
+
+        #if RIPPLE_VERIFY_NODEOBJECT_KEYS
+        assert (hash == getSHA512Half (data));
+        #endif
 
         m_cache.canonicalize (hash, object, true);
 
@@ -302,16 +334,24 @@ public:
             m_storeSize += object->getData().size();
 
         m_negCache.erase (hash);
+
+        if (m_fastBackend)
+        {
+            m_fastBackend->store (object);
+            ++m_storeCount;
+            if (object)
+                m_storeSize += object->getData().size();
+        }
     }
 
     //------------------------------------------------------------------------------
 
-    float getCacheHitRate () override
+    float getCacheHitRate ()
     {
         return m_cache.getHitRate ();
     }
 
-    void tune (int size, int age) override
+    void tune (int size, int age)
     {
         m_cache.setTargetSize (size);
         m_cache.setTargetAge (age);
@@ -319,7 +359,7 @@ public:
         m_negCache.setTargetAge (age);
     }
 
-    void sweep () override
+    void sweep ()
     {
         m_cache.sweep ();
         m_negCache.sweep ();
@@ -376,12 +416,12 @@ public:
 
     //------------------------------------------------------------------------------
 
-    void for_each (std::function <void(std::shared_ptr<NodeObject>)> f) override
+    void for_each (std::function <void(NodeObject::Ptr)> f) override
     {
         m_backend->for_each (f);
     }
 
-    void import (Database& source) override
+    void import (Database& source)
     {
         importInternal (source, *m_backend.get());
     }
@@ -391,7 +431,7 @@ public:
         Batch b;
         b.reserve (batchWritePreallocationSize);
 
-        source.for_each ([&](std::shared_ptr<NodeObject> object)
+        source.for_each ([&](NodeObject::Ptr object)
         {
             if (b.size() >= batchWritePreallocationSize)
             {

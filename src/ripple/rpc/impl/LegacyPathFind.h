@@ -20,18 +20,13 @@
 #ifndef RIPPLE_RPC_LEGACYPATHFIND_H_INCLUDED
 #define RIPPLE_RPC_LEGACYPATHFIND_H_INCLUDED
 
-#include <atomic>
-
 namespace ripple {
-
-class Application;
-
 namespace RPC {
 
 class LegacyPathFind
 {
 public:
-    LegacyPathFind (bool isAdmin, Application& app);
+    LegacyPathFind (bool isAdmin);
     ~LegacyPathFind ();
 
     bool isOk () const

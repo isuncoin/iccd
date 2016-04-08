@@ -57,7 +57,7 @@ template <typename ElementType,
 class Array
 {
 private:
-    using ParameterType = ElementType;
+    typedef ElementType ParameterType;
 
 public:
     //==============================================================================
@@ -727,7 +727,7 @@ public:
 
         if (isPositiveAndBelow (indexToRemove, numUsed))
         {
-            bassert (data.elements != nullptr);
+            bassert (data.elements != nullptr); 
             ElementType removed (data.elements[indexToRemove]);
             removeInternal (indexToRemove);
             return removed;
@@ -1021,7 +1021,7 @@ public:
     inline const TypeOfCriticalSectionToUse& getLock() const noexcept      { return data; }
 
     /** Returns the type of scoped lock to use for locking this array */
-    using ScopedLockType = typename TypeOfCriticalSectionToUse::ScopedLockType;
+    typedef typename TypeOfCriticalSectionToUse::ScopedLockType ScopedLockType;
 
 
 private:

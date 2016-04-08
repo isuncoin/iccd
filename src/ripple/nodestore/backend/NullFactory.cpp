@@ -20,7 +20,7 @@
 #include <BeastConfig.h>
 #include <ripple/nodestore/Factory.h>
 #include <ripple/nodestore/Manager.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 namespace NodeStore {
@@ -37,7 +37,7 @@ public:
     }
 
     std::string
-    getName() override
+    getName()
     {
         return std::string ();
     }
@@ -48,7 +48,7 @@ public:
     }
 
     Status
-    fetch (void const*, std::shared_ptr<NodeObject>*) override
+    fetch (void const*, NodeObject::Ptr*)
     {
         return notFound;
     }
@@ -67,22 +67,22 @@ public:
     }
 
     void
-    store (std::shared_ptr<NodeObject> const& object) override
+    store (NodeObject::ref object)
     {
     }
 
     void
-    storeBatch (Batch const& batch) override
+    storeBatch (Batch const& batch)
     {
     }
 
     void
-    for_each (std::function <void(std::shared_ptr<NodeObject>)> f) override
+    for_each (std::function <void(NodeObject::Ptr)> f)
     {
     }
 
     int
-    getWriteLoad () override
+    getWriteLoad ()
     {
         return 0;
     }

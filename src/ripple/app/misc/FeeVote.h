@@ -21,7 +21,6 @@
 #define RIPPLE_APP_MISC_FEEVOTE_H_INCLUDED
 
 #include <ripple/app/ledger/Ledger.h>
-#include <ripple/app/misc/Validations.h>
 #include <ripple/basics/BasicConfig.h>
 #include <ripple/protocol/SystemParameters.h>
 
@@ -40,9 +39,6 @@ public:
     {
         /** The cost of a reference transaction in drops. */
         std::uint64_t reference_fee = 10;
-
-        /** The cost of a reference transaction in fee units. */
-        std::uint32_t const reference_fee_units = 10;
 
         /** The account reserve requirement in drops. */
         std::uint64_t account_reserve = 20 * SYSTEM_CURRENCY_PARTS;
@@ -70,7 +66,7 @@ public:
     */
     virtual
     void
-    doVoting (Ledger::ref lastClosedLedger, ValidationSet const& parentValidations,
+    doVoting (Ledger::ref lastClosedLedger,
         std::shared_ptr<SHAMap> const& initialPosition) = 0;
 };
 

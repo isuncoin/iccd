@@ -20,39 +20,43 @@
 #ifndef RIPPLE_APP_LEDGER_LEDGER_H_INCLUDED
 #define RIPPLE_APP_LEDGER_LEDGER_H_INCLUDED
 
-#include <ripple/ledger/TxMeta.h>
-#include <ripple/ledger/View.h>
-#include <ripple/ledger/CachedView.h>
-#include <ripple/basics/CountedObject.h>
-#include <ripple/core/TimeKeeper.h>
-#include <ripple/protocol/Indexes.h>
+#include <ripple/shamap/SHAMap.h>
+#include <ripple/app/tx/Transaction.h>
+#include <ripple/app/tx/TransactionMeta.h>
+#include <ripple/app/misc/AccountState.h>
 #include <ripple/protocol/STLedgerEntry.h>
+#include <ripple/basics/CountedObject.h>
 #include <ripple/protocol/Serializer.h>
 #include <ripple/protocol/Book.h>
-#include <ripple/shamap/SHAMap.h>
-#include <beast/utility/Journal.h>
-#include <boost/optional.hpp>
-#include <mutex>
+#include <set>
 
 namespace ripple {
 
-class Application;
 class Job;
-class TransactionMaster;
+
+enum LedgerStateParms
+{
+    lepNONE         = 0,    // no special flags
+
+    // input flags
+    lepCREATE       = 1,    // Create if not present
+
+    // output flags
+    lepOKAY         = 2,    // success
+    lepMISSING      = 4,    // No node in that slot
+    lepWRONGTYPE    = 8,    // Node of different type there
+    lepCREATED      = 16,   // Node was created
+    lepERROR        = 32,   // error
+};
 
 class SqliteStatement;
 
-struct create_genesis_t {};
-extern create_genesis_t const create_genesis;
-
-/** Holds a ledger.
-
-    The ledger is composed of two SHAMaps. The state map holds all of the
-    ledger entries such as account roots and order books. The tx map holds
-    all of the transactions and associated metadata that made it into that
-    particular ledger. Most of the operations on a ledger are concerned
-    with the state map.
-
+// VFALCO TODO figure out exactly how this thing works.
+//         It seems like some ledger database is stored as a global, static in the
+//         class. But then what is the meaning of a Ledger object? Is this
+//         really two classes in one? StoreOfAllLedgers + SingleLedgerObject?
+//
+/** Holds some or all of a ledger.
     This can hold just the header, a partial set of data, or the entire set
     of data. It all depends on what is in the corresponding SHAMap entry.
     Various functions are provided to populate or depopulate the caches that
@@ -67,245 +71,183 @@ extern create_genesis_t const create_genesis;
     for locks.
 
     3) Mutable ledgers cannot be shared.
-
-    @note Presented to clients as ReadView
-    @note Calls virtuals in the constructor, so marked as final
 */
-class Ledger final
+class Ledger
     : public std::enable_shared_from_this <Ledger>
-    , public DigestAwareReadView
-    , public TxsRawView
     , public CountedObject <Ledger>
 {
 public:
     static char const* getCountedObjectName () { return "Ledger"; }
 
-    using pointer = std::shared_ptr<Ledger>;
-    using ref     = const std::shared_ptr<Ledger>&;
+    typedef std::shared_ptr<Ledger>           pointer;
+    typedef const std::shared_ptr<Ledger>&    ref;
+
+    enum TransResult
+    {
+        TR_ERROR    = -1,
+        TR_SUCCESS  = 0,
+        TR_NOTFOUND = 1,
+        TR_ALREADY  = 2,
+
+        // the transaction itself is corrupt
+        TR_BADTRANS = 3,
+
+        // one of the accounts is invalid
+        TR_BADACCT  = 4,
+
+        // the sending(apply)/receiving(remove) account is broke
+        TR_INSUFF   = 5,
+
+        // account is past this transaction
+        TR_PASTASEQ = 6,
+
+        // account is missing transactions before this
+        TR_PREASEQ  = 7,
+
+        // ledger too early
+        TR_BADLSEQ  = 8,
+
+        // amount is less than Tx fee
+        TR_TOOSMALL = 9,
+    };
+
+    // ledger close flags
+    static const std::uint32_t sLCF_NoConsensusTime = 1;
+
+public:
+
+    // used for the starting bootstrap ledger
+    Ledger (const RippleAddress & masterID, std::uint64_t startAmount);
+
+    Ledger (uint256 const& parentHash, uint256 const& transHash,
+            uint256 const& accountHash,
+            std::uint64_t totCoins, std::uint32_t closeTime,
+            std::uint32_t parentCloseTime, int closeFlags, int closeResolution,
+            std::uint32_t ledgerSeq, bool & loaded);
+    // used for database ledgers
+
+    Ledger (std::uint32_t ledgerSeq, std::uint32_t closeTime);
+    Ledger (Blob const & rawLedger, bool hasPrefix);
+    Ledger (std::string const& rawLedger, bool hasPrefix);
+    Ledger (bool dummy, Ledger & previous); // ledger after this one
+    Ledger (Ledger & target, bool isMutable); // snapshot
 
     Ledger (Ledger const&) = delete;
     Ledger& operator= (Ledger const&) = delete;
 
-    /** Create the Genesis ledger.
+    ~Ledger ();
 
-        The Genesis ledger contains a single account whose
-        AccountID is generated with a Generator using the seed
-        computed from the string "masterpassphrase" and ordinal
-        zero.
+    static Ledger::pointer getLastFullLedger ();
+    static std::uint32_t roundCloseTime (
+        std::uint32_t closeTime, std::uint32_t closeResolution);
 
-        The account has an XRP balance equal to the total amount
-        of XRP in the system. No more XRP than the amount which
-        starts in this account can ever exist, with amounts
-        used to pay fees being destroyed.
-    */
-    Ledger (create_genesis_t, Config const& config, Family& family);
-
-    // Used for ledgers loaded from JSON files
-    Ledger (uint256 const& parentHash, uint256 const& transHash,
-            uint256 const& accountHash,
-            std::uint64_t totDrops, std::uint32_t closeTime,
-            std::uint32_t parentCloseTime, int closeFlags, int closeResolution,
-            std::uint32_t ledgerSeq, bool & loaded, Config const& config,
-            Family& family,
-            beast::Journal j);
-
-    // Create a new ledger that's a snapshot of this one
-    Ledger (Ledger const& target, bool isMutable);
-
-    /** Create a new open ledger
-
-        The ledger will have the sequence number that
-        follows previous, and have
-        parentCloseTime == previous.closeTime.
-    */
-    Ledger (open_ledger_t, Ledger const& previous,
-        NetClock::time_point closeTime);
-
-    Ledger (void const* data,
-        std::size_t size, bool hasPrefix,
-            Config const& config, Family& family);
-
-    // used for database ledgers
-    Ledger (std::uint32_t ledgerSeq,
-        std::uint32_t closeTime, Config const& config,
-            Family& family);
-
-    ~Ledger();
-
-    //
-    // ReadView
-    //
-
-    LedgerInfo const&
-    info() const override
+    void updateHash ();
+    void setClosed ()
     {
-        return info_;
+        mClosed = true;
     }
-
-    Fees const&
-    fees() const override
-    {
-        return fees_;
-    }
-
-    Rules const&
-    rules() const override
-    {
-        return rules_;
-    }
-
-    bool
-    exists (Keylet const& k) const override;
-
-    boost::optional<uint256>
-    succ (uint256 const& key, boost::optional<
-        uint256> const& last = boost::none) const override;
-
-    std::shared_ptr<SLE const>
-    read (Keylet const& k) const override;
-
-    std::unique_ptr<sles_type::iter_base>
-    slesBegin() const override;
-
-    std::unique_ptr<sles_type::iter_base>
-    slesEnd() const override;
-
-    std::unique_ptr<sles_type::iter_base>
-    slesUpperBound(uint256 const& key) const override;
-
-    std::unique_ptr<txs_type::iter_base>
-    txsBegin() const override;
-
-    std::unique_ptr<txs_type::iter_base>
-    txsEnd() const override;
-
-    bool
-    txExists (uint256 const& key) const override;
-
-    tx_type
-    txRead (key_type const& key) const override;
-
-    //
-    // DigestAwareReadView
-    //
-
-    boost::optional<digest_type>
-    digest (key_type const& key) const override;
-
-    //
-    // RawView
-    //
-
-    void
-    rawErase (std::shared_ptr<
-        SLE> const& sle) override;
-
-    void
-    rawInsert (std::shared_ptr<
-        SLE> const& sle) override;
-
-    void
-    rawReplace (std::shared_ptr<
-        SLE> const& sle) override;
-
-    void
-    rawDestroyXRP (XRPAmount const& fee) override
-    {
-        info_.drops -= fee;
-    }
-
-    //
-    // TxsRawView
-    //
-
-    void
-    rawTxInsert (uint256 const& key,
-        std::shared_ptr<Serializer const
-            > const& txn, std::shared_ptr<
-                Serializer const> const& metaData) override;
-
-    //--------------------------------------------------------------------------
-
-    void setClosed()
-    {
-        info_.open = false;
-    }
-
     void setValidated()
     {
-        info_.validated = true;
+        mValidated = true;
     }
+    void setAccepted (
+        std::uint32_t closeTime, int closeResolution, bool correctCloseTime);
 
-    void setAccepted (std::uint32_t closeTime,
-        int closeResolution, bool correctCloseTime,
-            Config const& config);
-
-    void setImmutable (Config const& config);
-
+    void setAccepted ();
+    void setImmutable ();
+    bool isClosed () const
+    {
+        return mClosed;
+    }
+    bool isAccepted () const
+    {
+        return mAccepted;
+    }
+    bool isValidated () const
+    {
+        return mValidated;
+    }
     bool isImmutable () const
     {
         return mImmutable;
     }
-
-    // Indicates that all ledger entries
-    // are available locally. For example,
-    // all in the NodeStore and memory.
+    bool isFixed () const
+    {
+        return mClosed || mImmutable;
+    }
     void setFull ()
     {
-        txMap_->setLedgerSeq (info_.seq);
-        stateMap_->setLedgerSeq (info_.seq);
+        mTransactionMap->setLedgerSeq (mLedgerSeq);
+        mAccountStateMap->setLedgerSeq (mLedgerSeq);
     }
 
     // ledger signature operations
-    void addRaw (Serializer& s) const;
-    void setRaw (SerialIter& sit, bool hasPrefix, Family& family);
+    void addRaw (Serializer & s) const;
+    void setRaw (Serializer & s, bool hasPrefix);
 
-    // DEPRECATED
-    // Remove contract.h include
-    uint256 const&
-    getHash() const
+    uint256 const& getHash ();
+    uint256 const& getParentHash () const
     {
-        return info_.hash;
+        return mParentHash;
     }
-
-    void setTotalDrops (std::uint64_t totDrops)
+    uint256 const& getTransHash () const
     {
-        info_.drops = totDrops;
+        return mTransHash;
+    }
+    uint256 const& getAccountHash () const
+    {
+        return mAccountHash;
+    }
+    std::uint64_t getTotalCoins () const
+    {
+        return mTotCoins;
+    }
+    void destroyCoins (std::uint64_t fee)
+    {
+        mTotCoins -= fee;
+    }
+    void setTotalCoins (std::uint64_t totCoins)
+    {
+        mTotCoins = totCoins;
+    }
+    std::uint32_t getCloseTimeNC () const
+    {
+        return mCloseTime;
+    }
+    std::uint32_t getParentCloseTimeNC () const
+    {
+        return mParentCloseTime;
+    }
+    std::uint32_t getLedgerSeq () const
+    {
+        return mLedgerSeq;
+    }
+    int getCloseResolution () const
+    {
+        return mCloseResolution;
+    }
+    bool getCloseAgree () const
+    {
+        return (mCloseFlags & sLCF_NoConsensusTime) == 0;
     }
 
     // close time functions
-    void setCloseTime (std::uint32_t when)
+    void setCloseTime (std::uint32_t ct)
     {
         assert (!mImmutable);
-        info_.closeTime = when;
+        mCloseTime = ct;
     }
-
     void setCloseTime (boost::posix_time::ptime);
-
     boost::posix_time::ptime getCloseTime () const;
 
-    SHAMap const&
-    stateMap() const
+    // low level functions
+    std::shared_ptr<SHAMap> const& peekTransactionMap () const
     {
-        return *stateMap_;
+        return mTransactionMap;
     }
-
-    SHAMap&
-    stateMap()
+    std::shared_ptr<SHAMap> const& peekAccountStateMap () const
     {
-        return *stateMap_;
-    }
-
-    SHAMap const&
-    txMap() const
-    {
-        return *txMap_;
-    }
-
-    SHAMap&
-    txMap()
-    {
-        return *txMap_;
+        return mAccountStateMap;
     }
 
     // returns false on error
@@ -317,146 +259,243 @@ public:
     bool isAcquiringTx (void) const;
     bool isAcquiringAS (void) const;
 
-    //--------------------------------------------------------------------------
+    // Transaction Functions
+    bool addTransaction (uint256 const& id, Serializer const& txn);
+    bool addTransaction (
+        uint256 const& id, Serializer const& txn, Serializer const& metaData);
+    bool hasTransaction (uint256 const& TransID) const
+    {
+        return mTransactionMap->hasItem (TransID);
+    }
+    Transaction::pointer getTransaction (uint256 const& transID) const;
+    bool getTransaction (
+        uint256 const& transID,
+        Transaction::pointer & txn, TransactionMetaSet::pointer & txMeta) const;
+    bool getTransactionMeta (
+        uint256 const& transID, TransactionMetaSet::pointer & txMeta) const;
+    bool getMetaHex (uint256 const& transID, std::string & hex) const;
 
+    static STTx::pointer getSTransaction (
+        std::shared_ptr<SHAMapItem> const&, SHAMapTreeNode::TNType);
+    STTx::pointer getSMTransaction (
+        std::shared_ptr<SHAMapItem> const&, SHAMapTreeNode::TNType,
+        TransactionMetaSet::pointer & txMeta) const;
+
+    // high-level functions
+    bool hasAccount (const RippleAddress & acctID) const;
+    AccountState::pointer getAccountState (const RippleAddress & acctID) const;
+    LedgerStateParms writeBack (LedgerStateParms parms, SLE::ref);
+    SLE::pointer getAccountRoot (Account const& accountID) const;
+    SLE::pointer getAccountRoot (const RippleAddress & naAccountID) const;
     void updateSkipList ();
 
+    void visitAccountItems (
+        Account const& accountID, std::function<void (SLE::ref)>) const;
+    bool visitAccountItems (
+        Account const& accountID,
+        uint256 const& startAfter, // Entry to start after
+        std::uint64_t const hint,  // Hint which page to start at
+        unsigned int limit,
+        std::function <bool (SLE::ref)>) const;
     void visitStateItems (std::function<void (SLE::ref)>) const;
 
+    // database functions (low-level)
+    static Ledger::pointer loadByIndex (std::uint32_t ledgerIndex);
+    static Ledger::pointer loadByHash (uint256 const& ledgerHash);
+    static uint256 getHashByIndex (std::uint32_t index);
+    static bool getHashesByIndex (
+        std::uint32_t index, uint256 & ledgerHash, uint256 & parentHash);
+    static std::map< std::uint32_t, std::pair<uint256, uint256> >
+                  getHashesByIndex (std::uint32_t minSeq, std::uint32_t maxSeq);
+    bool pendSaveValidated (bool isSynchronous, bool isCurrent);
+
+    // next/prev function
+    SLE::pointer getSLE (uint256 const& uHash) const; // SLE is mutable
+    SLE::pointer getSLEi (uint256 const& uHash) const; // SLE is immutable
+
+    // VFALCO NOTE These seem to let you walk the list of ledgers
+    //
+    uint256 getFirstLedgerIndex () const;
+    uint256 getLastLedgerIndex () const;
+
+    // first node >hash
+    uint256 getNextLedgerIndex (uint256 const& uHash) const;
+
+    // first node >hash, <end
+    uint256 getNextLedgerIndex (uint256 const& uHash, uint256 const& uEnd) const;
+
+    // last node <hash
+    uint256 getPrevLedgerIndex (uint256 const& uHash) const;
+
+    // last node <hash, >begin
+    uint256 getPrevLedgerIndex (uint256 const& uHash, uint256 const& uBegin) const;
+
+    // Ledger hash table function
+    uint256 getLedgerHash (std::uint32_t ledgerIndex);
+    typedef std::vector<std::pair<std::uint32_t, uint256>> LedgerHashes;
+    LedgerHashes getLedgerHashes () const;
+
+    std::vector<uint256> getLedgerAmendments () const;
 
     std::vector<uint256> getNeededTransactionHashes (
         int max, SHAMapSyncFilter* filter) const;
-
     std::vector<uint256> getNeededAccountStateHashes (
         int max, SHAMapSyncFilter* filter) const;
 
-    bool walkLedger (beast::Journal j) const;
+    //
+    // Offer functions
+    //
 
-    bool assertSane (beast::Journal ledgerJ);
+    SLE::pointer getOffer (uint256 const& uIndex) const;
+    SLE::pointer getOffer (Account const& account, std::uint32_t uSequence) const;
 
-private:
-    class sles_iter_impl;
-    class txs_iter_impl;
+    //
+    // Directory functions
+    // Directories are doubly linked lists of nodes.
 
+    // Given a directory root and and index compute the index of a node.
+    static void ownerDirDescriber (SLE::ref, bool, Account const& owner);
+
+    // Return a node: root or normal
+    SLE::pointer getDirNode (uint256 const& uNodeIndex) const;
+
+    //
+    // Quality
+    //
+
+    static void qualityDirDescriber (
+        SLE::ref, bool,
+        Currency const& uTakerPaysCurrency, Account const& uTakerPaysIssuer,
+        Currency const& uTakerGetsCurrency, Account const& uTakerGetsIssuer,
+        const std::uint64_t & uRate);
+
+    //
+    // Ripple functions : credit lines
+    //
+
+    SLE::pointer
+    getRippleState (uint256 const& uNode) const;
+
+    SLE::pointer
+    getRippleState (
+        Account const& a, Account const& b, Currency const& currency) const;
+
+    std::uint32_t getReferenceFeeUnits ()
+    {
+        // Returns the cost of the reference transaction in fee units
+        updateFees ();
+        return mReferenceFeeUnits;
+    }
+
+    std::uint64_t getBaseFee ()
+    {
+        // Returns the cost of the reference transaction in drops
+        updateFees ();
+        return mBaseFee;
+    }
+
+    std::uint64_t getReserve (int increments)
+    {
+        // Returns the required reserve in drops
+        updateFees ();
+        return static_cast<std::uint64_t> (increments) * mReserveIncrement
+            + mReserveBase;
+    }
+
+    std::uint64_t getReserveInc ()
+    {
+        updateFees ();
+        return mReserveIncrement;
+    }
+
+    std::uint64_t scaleFeeBase (std::uint64_t fee);
+    std::uint64_t scaleFeeLoad (std::uint64_t fee, bool bAdmin);
+
+    static std::set<std::uint32_t> getPendingSaves();
+
+    /** Const version of getHash() which gets the current value without calling
+        updateHash(). */
+    uint256 const& getRawHash () const
+    {
+        return mHash;
+    }
+
+    bool walkLedger () const;
+    bool assertSane () const;
+
+protected:
+    SLE::pointer getASNode (
+        LedgerStateParms& parms, uint256 const& nodeID, LedgerEntryType let) const;
+
+    // returned SLE is immutable
+    SLE::pointer getASNodeI (uint256 const& nodeID, LedgerEntryType let) const;
+
+    void saveValidatedLedgerAsync(Job&, bool current)
+    {
+        saveValidatedLedger(current);
+    }
     bool saveValidatedLedger (bool current);
 
-    bool
-    setup (Config const& config);
-
-    std::shared_ptr<SLE>
-    peek (Keylet const& k) const;
-
-    void
-    updateHash();
+private:
+    void initializeFees ();
+    void updateFees ();
 
     // The basic Ledger structure, can be opened, closed, or synching
+    uint256       mHash;
+    uint256       mParentHash;
+    uint256       mTransHash;
+    uint256       mAccountHash;
+    std::uint64_t mTotCoins;
+    std::uint32_t mLedgerSeq;
 
-    bool mValidHash = false;
-    bool mImmutable;
+    // when this ledger closed
+    std::uint32_t mCloseTime;
 
-    std::shared_ptr<SHAMap> txMap_;
-    std::shared_ptr<SHAMap> stateMap_;
+    // when the previous ledger closed
+    std::uint32_t mParentCloseTime;
 
-    // Protects fee variables
-    std::mutex mutable mutex_;
+    // the resolution for this ledger close time (2-120 seconds)
+    int           mCloseResolution;
 
-    Fees fees_;
-    Rules rules_;
-    LedgerInfo info_;
+    // flags indicating how this ledger close took place
+    std::uint32_t mCloseFlags;
+    bool          mClosed, mValidated, mValidHash, mAccepted, mImmutable;
+
+    // Fee units for the reference transaction
+    std::uint32_t mReferenceFeeUnits;
+
+    // Reserve basse and increment in fee units
+    std::uint32_t mReserveBase, mReserveIncrement;
+
+    // Ripple cost of the reference transaction
+    std::uint64_t mBaseFee;
+
+    std::shared_ptr<SHAMap> mTransactionMap;
+    std::shared_ptr<SHAMap> mAccountStateMap;
+
+    typedef RippleMutex StaticLockType;
+    typedef std::lock_guard <StaticLockType> StaticScopedLockType;
+
+    // Ledgers not fully saved, validated ledger present but DB may not be
+    // correct yet.
+    static StaticLockType sPendingSaveLock;
+
+    static std::set<std::uint32_t>  sPendingSaves;
 };
 
-/** A ledger wrapped in a CachedView. */
-using CachedLedger = CachedView<Ledger>;
-
-//------------------------------------------------------------------------------
-//
-// API
-//
-//------------------------------------------------------------------------------
-
-extern
-bool
-pendSaveValidated(
-    Application& app,
-    std::shared_ptr<Ledger> const& ledger,
-    bool isSynchronous,
-    bool isCurrent);
-
-extern
-Ledger::pointer
-loadByIndex (std::uint32_t ledgerIndex,
-    Application& app);
-
-extern
-std::tuple<Ledger::pointer, std::uint32_t, uint256>
-loadLedgerHelper(std::string const& sqlSuffix,
-    Application& app);
-
-extern
-Ledger::pointer
-loadByHash (uint256 const& ledgerHash, Application& app);
-
-extern
-uint256
-getHashByIndex(std::uint32_t index, Application& app);
-
-extern
-bool
-getHashesByIndex(std::uint32_t index,
-    uint256 &ledgerHash, uint256& parentHash,
-        Application& app);
-
-extern
-std::map< std::uint32_t, std::pair<uint256, uint256>>
-getHashesByIndex (std::uint32_t minSeq, std::uint32_t maxSeq,
-    Application& app);
-
-/** Deserialize a SHAMapItem containing a single STTx
-
-    Throw:
-
-        May throw on deserializaton error
-*/
-std::shared_ptr<STTx const>
-deserializeTx (SHAMapItem const& item);
-
-/** Deserialize a SHAMapItem containing STTx + STObject metadata
-
-    The SHAMap must contain two variable length
-    serialization objects.
-
-    Throw:
-
-        May throw on deserializaton error
-*/
-std::pair<std::shared_ptr<
-    STTx const>, std::shared_ptr<
-        STObject const>>
-deserializeTxPlusMeta (SHAMapItem const& item);
-
-// DEPRECATED
-inline
-std::shared_ptr<SLE const>
-cachedRead (ReadView const& ledger, uint256 const& key,
-    boost::optional<LedgerEntryType> type = boost::none)
+inline LedgerStateParms operator| (
+    const LedgerStateParms& l1, const LedgerStateParms& l2)
 {
-    if (type)
-        return ledger.read(Keylet(*type, key));
-    return ledger.read(keylet::unchecked(key));
+    return static_cast<LedgerStateParms> (
+        static_cast<int> (l1) | static_cast<int> (l2));
 }
 
-//------------------------------------------------------------------------------
-
-void
-ownerDirDescriber (SLE::ref, bool, AccountID const& owner);
-
-// VFALCO NOTE This is referenced from only one place
-void
-qualityDirDescriber (
-    SLE::ref, bool,
-    Currency const& uTakerPaysCurrency, AccountID const& uTakerPaysIssuer,
-    Currency const& uTakerGetsCurrency, AccountID const& uTakerGetsIssuer,
-    const std::uint64_t & uRate, Application& app);
+inline LedgerStateParms operator& (
+    const LedgerStateParms& l1, const LedgerStateParms& l2)
+{
+    return static_cast<LedgerStateParms> (
+        static_cast<int> (l1) & static_cast<int> (l2));
+}
 
 } // ripple
 

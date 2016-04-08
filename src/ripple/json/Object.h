@@ -21,7 +21,7 @@
 #define RIPPLE_JSON_OBJECT_H_INCLUDED
 
 #include <ripple/json/Writer.h>
-#include <memory>
+#include <beast/cxx14/memory.h>
 
 namespace Json {
 
@@ -318,7 +318,13 @@ public:
     {
     }
 
-    WriterObject (WriterObject&& other) = default;
+#ifdef _MSC_VER
+    WriterObject (WriterObject&& other) noexcept
+            : writer_ (std::move (other.writer_)),
+              object_ (std::move (other.object_))
+    {
+    }
+#endif
 
     Object* operator->()
     {

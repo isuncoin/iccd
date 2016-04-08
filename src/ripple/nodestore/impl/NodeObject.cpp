@@ -36,7 +36,7 @@ NodeObject::NodeObject (
     mData = std::move (data);
 }
 
-std::shared_ptr<NodeObject>
+NodeObject::Ptr
 NodeObject::createObject (
     NodeObjectType type,
     Blob&& data,
@@ -63,5 +63,22 @@ NodeObject::getData () const
 {
     return mData;
 }
+
+bool
+NodeObject::isCloneOf (NodeObject::Ptr const& other) const
+{
+    if (mType != other->mType)
+        return false;
+
+    if (mHash != other->mHash)
+        return false;
+
+    if (mData != other->mData)
+        return false;
+
+    return true;
+}
+
+//------------------------------------------------------------------------------
 
 }

@@ -30,8 +30,8 @@ namespace ripple
 class JobTypes
 {
 public:
-    using Map = std::map <JobType, JobTypeInfo>;
-    using const_iterator = Map::const_iterator;
+    typedef std::map <JobType, JobTypeInfo> Map;
+    typedef Map::const_iterator const_iterator;
 
     JobTypes ()
         : m_unknown (jtINVALID, "invalid", 0, true, true, 0, 0)
@@ -80,10 +80,6 @@ public:
 
         // A transaction received from the network
         add (jtTRANSACTION,   "transaction",
-            maxLimit, true,   false, 250,   1000);
-
-        // Apply batched transactions
-        add (jtBATCH,          "batch",
             maxLimit, true,   false, 250,   1000);
 
         // A Score or Fetch of the UNL (DEPRECATED)

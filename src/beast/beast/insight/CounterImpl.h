@@ -32,8 +32,8 @@ class CounterImpl
     , public BaseImpl
 {
 public:
-    using value_type = std::int64_t;
-
+    typedef std::int64_t value_type;
+   
     virtual ~CounterImpl () = 0;
     virtual void increment (value_type amount) = 0;
 };

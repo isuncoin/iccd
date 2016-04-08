@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <beast/utility/noexcept.h>
 
 namespace beast {
 
@@ -60,9 +61,9 @@ private:
       void *data;
     };
 
-    using data_cb_t = int (*) (
+    typedef int (*data_cb_t) (
         state_t*, const char *at, size_t length);
-    using cb_t = int (*) (state_t*);
+    typedef int (*cb_t) (state_t*);
 
     struct hooks_t
     {
@@ -86,7 +87,7 @@ private:
     std::string value_;
 
 public:
-    using error_code = boost::system::error_code;
+    typedef boost::system::error_code error_code;
 
     virtual
     ~basic_parser() = default;

@@ -61,7 +61,7 @@ std::basic_string <CharT, Traits, Allocator> heading (
 /** Produce a dashed line separator, with a specified or default size. */
 struct divider
 {
-    using CharT = char;
+    typedef char CharT;
     explicit divider (int width_ = 80, CharT fill_ = CharT ('-'))
         : width (width_)
         , fill (fill_)
@@ -117,7 +117,7 @@ template <class CharT,
 class field_t
 {
 public:
-    using string_t = std::basic_string <CharT, Traits, Allocator>;
+    typedef std::basic_string <CharT, Traits, Allocator> string_t;
     field_t (string_t const& text_, int width_, int pad_, bool right_)
         : text (text_)
         , width (width_)

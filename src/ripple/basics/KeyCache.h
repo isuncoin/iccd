@@ -46,8 +46,8 @@ template <
 class KeyCache
 {
 public:
-    using key_type = Key;
-    using clock_type = beast::abstract_clock <std::chrono::steady_clock>;
+    typedef Key key_type;
+    typedef beast::abstract_clock <std::chrono::steady_clock> clock_type;
 
 private:
     struct Stats
@@ -80,12 +80,12 @@ private:
         clock_type::time_point last_access;
     };
 
-    using map_type = hardened_hash_map <key_type, Entry, Hash, KeyEqual>;
-    using iterator = typename map_type::iterator;
-    using lock_guard = std::lock_guard <Mutex>;
+    typedef hardened_hash_map <key_type, Entry, Hash, KeyEqual> map_type;
+    typedef typename map_type::iterator iterator;
+    typedef std::lock_guard <Mutex> lock_guard;
 
 public:
-    using size_type = typename map_type::size_type;
+    typedef typename map_type::size_type size_type;
 
 private:
     Mutex mutable m_mutex;

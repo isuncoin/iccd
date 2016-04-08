@@ -113,14 +113,14 @@ public:
     template <class T>
     struct AllocT
     {
-        using value_type = T;
+        typedef T value_type;
 
-        //using std::true_type::type = propagate_on_container_swap :;
+        //typedef propagate_on_container_swap : std::true_type::type;
 
         template <class U>
         struct rebind
         {
-            using other = AllocT <U>;
+            typedef AllocT <U> other;
         };
 
         explicit AllocT (int)
@@ -170,8 +170,8 @@ public:
     class MaybeUnordered : public Base
     {
     public:
-        using Comp = std::less <typename Base::Key>;
-        using MyComp = CompT <typename Base::Key>;
+        typedef std::less <typename Base::Key> Comp;
+        typedef CompT <typename Base::Key> MyComp;
 
     protected:
         static std::string name_ordered_part()
@@ -185,10 +185,10 @@ public:
     class MaybeUnordered <Base, true> : public Base
     {
     public:
-        using Hash = std::hash <typename Base::Key>;
-        using Equal = std::equal_to <typename Base::Key>;
-        using MyHash = HashT <typename Base::Key>;
-        using MyEqual = EqualT <typename Base::Key>;
+        typedef std::hash <typename Base::Key> Hash;
+        typedef std::equal_to <typename Base::Key> Equal;
+        typedef HashT <typename Base::Key> MyHash;
+        typedef EqualT <typename Base::Key> MyEqual;
 
     protected:
         static std::string name_ordered_part()
@@ -226,9 +226,9 @@ public:
     class MaybeMap : public Base
     {
     public:
-        using T = void;
-        using Value = typename Base::Key;
-        using Values = std::vector <Value>;
+        typedef void T;
+        typedef typename Base::Key Value;
+        typedef std::vector <Value> Values;
 
         static typename Base::Key const& extract (Value const& value)
         {
@@ -259,9 +259,9 @@ public:
     class MaybeMap <Base, true> : public Base
     {
     public:
-        using T = int;
-        using Value = std::pair <typename Base::Key, T>;
-        using Values = std::vector <Value>;
+        typedef int T;
+        typedef std::pair <typename Base::Key, T> Value;
+        typedef std::vector <Value> Values;
 
         static typename Base::Key const& extract (Value const& value)
         {
@@ -326,9 +326,9 @@ public:
 
     struct TestTraitsBase
     {
-        using Key = std::string;
-        using Clock = std::chrono::steady_clock;
-        using ManualClock = manual_clock<Clock>;
+        typedef std::string Key;
+        typedef std::chrono::steady_clock Clock;
+        typedef manual_clock<Clock> ManualClock;
     };
 
     template <bool IsUnordered, bool IsMulti, bool IsMap>
@@ -337,18 +337,18 @@ public:
             TestTraitsBase, IsMap>, IsMulti>, IsUnordered>
     {
     private:
-        using Base = MaybeUnordered <MaybeMulti <MaybeMap <
-            TestTraitsBase, IsMap>, IsMulti>, IsUnordered>;
+        typedef MaybeUnordered <MaybeMulti <MaybeMap <
+            TestTraitsBase, IsMap>, IsMulti>, IsUnordered> Base;
 
     public:
         using typename Base::Key;
 
-        using is_unordered = std::integral_constant <bool, IsUnordered>;
-        using is_multi = std::integral_constant <bool, IsMulti>;
-        using is_map = std::integral_constant <bool, IsMap>;
+        typedef std::integral_constant <bool, IsUnordered> is_unordered;
+        typedef std::integral_constant <bool, IsMulti> is_multi;
+        typedef std::integral_constant <bool, IsMap> is_map;
 
-        using Alloc = std::allocator <typename Base::Value>;
-        using MyAlloc = AllocT <typename Base::Value>;
+        typedef std::allocator <typename Base::Value> Alloc;
+        typedef AllocT <typename Base::Value> MyAlloc;
 
         static std::string name()
         {
@@ -645,13 +645,13 @@ typename std::enable_if <
 aged_associative_container_test_base::
 checkUnorderedContentsRefRef (C&& c, Values const& v)
 {
-    using Cont = typename std::remove_reference <C>::type;
-    using Traits = TestTraits <
+    typedef typename std::remove_reference <C>::type Cont;
+    typedef TestTraits <
         Cont::is_unordered::value,
             Cont::is_multi::value,
                 Cont::is_map::value
-                >;
-    using size_type = typename Cont::size_type;
+                > Traits;
+    typedef typename Cont::size_type size_type;
     auto const hash (c.hash_function());
     auto const key_eq (c.key_eq());
     for (size_type i (0); i < c.bucket_count(); ++i)
@@ -679,13 +679,13 @@ void
 aged_associative_container_test_base::
 checkContentsRefRef (C&& c, Values const& v)
 {
-    using Cont = typename std::remove_reference <C>::type;
-    using Traits = TestTraits <
+    typedef typename std::remove_reference <C>::type Cont;
+    typedef TestTraits <
         Cont::is_unordered::value,
             Cont::is_multi::value,
                 Cont::is_map::value
-                >;
-    using size_type = typename Cont::size_type;
+                > Traits;
+    typedef typename Cont::size_type size_type;
 
     expect (c.size() == v.size());
     expect (size_type (std::distance (
@@ -719,12 +719,12 @@ void
 aged_associative_container_test_base::
 checkContents (Cont& c)
 {
-    using Traits = TestTraits <
+    typedef TestTraits <
         Cont::is_unordered::value,
             Cont::is_multi::value,
                 Cont::is_map::value
-                >;
-    using Values = typename Traits::Values;
+                > Traits;
+    typedef typename Traits::Values Values;
     checkContents (c, Values());
 }
 
@@ -740,15 +740,15 @@ typename std::enable_if <! IsUnordered>::type
 aged_associative_container_test_base::
 testConstructEmpty ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Key = typename Traits::Key;
-    using T = typename Traits::T;
-    using Clock = typename Traits::Clock;
-    using Comp = typename Traits::Comp;
-    using Alloc = typename Traits::Alloc;
-    using MyComp = typename Traits::MyComp;
-    using MyAlloc = typename Traits::MyAlloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Key Key;
+    typedef typename Traits::T T;
+    typedef typename Traits::Clock Clock;
+    typedef typename Traits::Comp Comp;
+    typedef typename Traits::Alloc Alloc;
+    typedef typename Traits::MyComp MyComp;
+    typedef typename Traits::MyAlloc MyAlloc;
     typename Traits::ManualClock clock;
 
     //testcase (Traits::name() + " empty");
@@ -785,17 +785,17 @@ typename std::enable_if <IsUnordered>::type
 aged_associative_container_test_base::
 testConstructEmpty ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Key = typename Traits::Key;
-    using T = typename Traits::T;
-    using Clock = typename Traits::Clock;
-    using Hash = typename Traits::Hash;
-    using Equal = typename Traits::Equal;
-    using Alloc = typename Traits::Alloc;
-    using MyHash = typename Traits::MyHash;
-    using MyEqual = typename Traits::MyEqual;
-    using MyAlloc = typename Traits::MyAlloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Key Key;
+    typedef typename Traits::T T;
+    typedef typename Traits::Clock Clock;
+    typedef typename Traits::Hash Hash;
+    typedef typename Traits::Equal Equal;
+    typedef typename Traits::Alloc Alloc;
+    typedef typename Traits::MyHash MyHash;
+    typedef typename Traits::MyEqual MyEqual;
+    typedef typename Traits::MyAlloc MyAlloc;
     typename Traits::ManualClock clock;
 
     //testcase (Traits::name() + " empty");
@@ -855,15 +855,15 @@ typename std::enable_if <! IsUnordered>::type
 aged_associative_container_test_base::
 testConstructRange ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Key = typename Traits::Key;
-    using T = typename Traits::T;
-    using Clock = typename Traits::Clock;
-    using Comp = typename Traits::Comp;
-    using Alloc = typename Traits::Alloc;
-    using MyComp = typename Traits::MyComp;
-    using MyAlloc = typename Traits::MyAlloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Key Key;
+    typedef typename Traits::T T;
+    typedef typename Traits::Clock Clock;
+    typedef typename Traits::Comp Comp;
+    typedef typename Traits::Alloc Alloc;
+    typedef typename Traits::MyComp MyComp;
+    typedef typename Traits::MyAlloc MyAlloc;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -918,17 +918,17 @@ typename std::enable_if <IsUnordered>::type
 aged_associative_container_test_base::
 testConstructRange ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Key = typename Traits::Key;
-    using T = typename Traits::T;
-    using Clock = typename Traits::Clock;
-    using Hash = typename Traits::Hash;
-    using Equal = typename Traits::Equal;
-    using Alloc = typename Traits::Alloc;
-    using MyHash = typename Traits::MyHash;
-    using MyEqual = typename Traits::MyEqual;
-    using MyAlloc = typename Traits::MyAlloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Key Key;
+    typedef typename Traits::T T;
+    typedef typename Traits::Clock Clock;
+    typedef typename Traits::Hash Hash;
+    typedef typename Traits::Equal Equal;
+    typedef typename Traits::Alloc Alloc;
+    typedef typename Traits::MyHash MyHash;
+    typedef typename Traits::MyEqual MyEqual;
+    typedef typename Traits::MyAlloc MyAlloc;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -998,15 +998,15 @@ typename std::enable_if <! IsUnordered>::type
 aged_associative_container_test_base::
 testConstructInitList ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Key = typename Traits::Key;
-    using T = typename Traits::T;
-    using Clock = typename Traits::Clock;
-    using Comp = typename Traits::Comp;
-    using Alloc = typename Traits::Alloc;
-    using MyComp = typename Traits::MyComp;
-    using MyAlloc = typename Traits::MyAlloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Key Key;
+    typedef typename Traits::T T;
+    typedef typename Traits::Clock Clock;
+    typedef typename Traits::Comp Comp;
+    typedef typename Traits::Alloc Alloc;
+    typedef typename Traits::MyComp MyComp;
+    typedef typename Traits::MyAlloc MyAlloc;
     typename Traits::ManualClock clock;
 
     //testcase (Traits::name() + " init-list");
@@ -1023,17 +1023,17 @@ typename std::enable_if <IsUnordered>::type
 aged_associative_container_test_base::
 testConstructInitList ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Key = typename Traits::Key;
-    using T = typename Traits::T;
-    using Clock = typename Traits::Clock;
-    using Hash = typename Traits::Hash;
-    using Equal = typename Traits::Equal;
-    using Alloc = typename Traits::Alloc;
-    using MyHash = typename Traits::MyHash;
-    using MyEqual = typename Traits::MyEqual;
-    using MyAlloc = typename Traits::MyAlloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Key Key;
+    typedef typename Traits::T T;
+    typedef typename Traits::Clock Clock;
+    typedef typename Traits::Hash Hash;
+    typedef typename Traits::Equal Equal;
+    typedef typename Traits::Alloc Alloc;
+    typedef typename Traits::MyHash MyHash;
+    typedef typename Traits::MyEqual MyEqual;
+    typedef typename Traits::MyAlloc MyAlloc;
     typename Traits::ManualClock clock;
 
     //testcase (Traits::name() + " init-list");
@@ -1054,9 +1054,9 @@ void
 aged_associative_container_test_base::
 testCopyMove ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Alloc = typename Traits::Alloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Alloc Alloc;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -1136,9 +1136,9 @@ void
 aged_associative_container_test_base::
 testIterator()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Alloc = typename Traits::Alloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Alloc Alloc;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -1199,9 +1199,9 @@ typename std::enable_if <! IsUnordered>::type
 aged_associative_container_test_base::
 testReverseIterator()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
-    using Alloc = typename Traits::Alloc;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
+    typedef typename Traits::Alloc Alloc;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -1356,7 +1356,7 @@ void
 aged_associative_container_test_base::
 testModifiers()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
     auto const l (make_list (v));
@@ -1416,8 +1416,8 @@ void
 aged_associative_container_test_base::
 testChronological ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -1483,7 +1483,7 @@ typename std::enable_if <IsMap && ! IsMulti>::type
 aged_associative_container_test_base::
 testArrayCreate()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
     typename Traits::ManualClock clock;
     auto v (Traits::values());
 
@@ -1523,7 +1523,7 @@ reverseFillAgedContainer (Container& c, Values const& values)
 
     // c.clock() returns an abstract_clock, so dynamic_cast to manual_clock.
     // VFALCO NOTE This is sketchy
-    using ManualClock = TestTraitsBase::ManualClock;
+    typedef TestTraitsBase::ManualClock ManualClock;
     ManualClock& clk (dynamic_cast <ManualClock&> (c.clock()));
     clk.set (0);
 
@@ -1621,7 +1621,7 @@ void
 aged_associative_container_test_base::
 testElementErase ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
 
     //testcase (Traits::name() + " element erase"
     testcase ("element erase");
@@ -1751,7 +1751,7 @@ void
 aged_associative_container_test_base::
 testRangeErase ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
 
     //testcase (Traits::name() + " element erase"
     testcase ("range erase");
@@ -1784,8 +1784,8 @@ typename std::enable_if <! IsUnordered>::type
 aged_associative_container_test_base::
 testCompare ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
-    using Value = typename Traits::Value;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
+    typedef typename Traits::Value Value;
     typename Traits::ManualClock clock;
     auto const v (Traits::values());
 
@@ -1819,7 +1819,7 @@ typename std::enable_if <! IsUnordered>::type
 aged_associative_container_test_base::
 testObservers()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
     typename Traits::ManualClock clock;
 
     //testcase (Traits::name() + " observers");
@@ -1838,7 +1838,7 @@ typename std::enable_if <IsUnordered>::type
 aged_associative_container_test_base::
 testObservers()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
     typename Traits::ManualClock clock;
 
     //testcase (Traits::name() + " observers");
@@ -1862,7 +1862,7 @@ void
 aged_associative_container_test_base::
 testMaybeUnorderedMultiMap ()
 {
-    using Traits = TestTraits <IsUnordered, IsMulti, IsMap>;
+    typedef TestTraits <IsUnordered, IsMulti, IsMap> Traits;
 
     testConstructEmpty      <IsUnordered, IsMulti, IsMap> ();
     testConstructRange      <IsUnordered, IsMulti, IsMap> ();
@@ -1886,8 +1886,8 @@ class aged_set_test : public aged_associative_container_test_base
 public:
     // Compile time checks
 
-    using Key = std::string;
-    using T = int;
+    typedef std::string Key;
+    typedef int T;
 
     static_assert (std::is_same <
         aged_set <Key>,

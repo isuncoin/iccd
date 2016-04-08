@@ -5,10 +5,9 @@
 // http://www.boost.org/LICENSE_1_0.txt)
 //
 
-#include "soci/soci-platform.h"
+#include <soci-platform.h>
 #include "common.h"
-#include "soci/soci-backend.h"
-#include "soci-mktime.h"
+#include "soci-backend.h"
 // std
 #include <cstdlib>
 #include <ctime>
@@ -55,5 +54,14 @@ void soci::details::sqlite3::parse_std_tm(char const *buf, std::tm &t)
         second = parse10(p1, p2, errMsg);
     }
 
-    details::mktime_from_ymdhms(t, year, month, day, hour, minute, second);
+    t.tm_isdst = -1;
+    t.tm_year = year - 1900;
+    t.tm_mon  = month - 1;
+    t.tm_mday = day;
+    t.tm_hour = hour;
+    t.tm_min  = minute;
+    t.tm_sec  = second;
+
+    std::mktime(&t);
 }
+

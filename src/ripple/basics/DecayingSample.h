@@ -32,8 +32,8 @@ template <int Window, typename Clock>
 class DecayingSample
 {
 public:
-    using value_type = typename Clock::duration::rep;
-    using time_point = typename Clock::time_point;
+    typedef typename Clock::duration::rep value_type;
+    typedef typename Clock::time_point time_point;
 
     DecayingSample () = delete;
 

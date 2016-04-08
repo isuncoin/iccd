@@ -26,9 +26,9 @@ namespace ripple {
 class OrderBook
 {
 public:
-    using pointer = std::shared_ptr <OrderBook>;
-    using ref = std::shared_ptr <OrderBook> const&;
-    using List = std::vector<pointer>;
+    typedef std::shared_ptr <OrderBook> pointer;
+    typedef std::shared_ptr <OrderBook> const& ref;
+    typedef std::vector<pointer> List;
 
     /** Construct from a currency specification.
 
@@ -61,12 +61,12 @@ public:
         return mBook.out.currency;
     }
 
-    AccountID const& getIssuerIn () const
+    Account const& getIssuerIn () const
     {
         return mBook.in.account;
     }
 
-    AccountID const& getIssuerOut () const
+    Account const& getIssuerOut () const
     {
         return mBook.out.account;
     }

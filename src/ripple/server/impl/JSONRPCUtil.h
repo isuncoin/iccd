@@ -25,8 +25,7 @@
 
 namespace ripple {
 
-void HTTPReply (
-    int nStatus, std::string const& strMsg, Json::Output const&, beast::Journal j);
+void HTTPReply (int nStatus, std::string const& strMsg, Json::Output const&);
 
 } // ripple
 

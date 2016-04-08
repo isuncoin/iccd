@@ -6,12 +6,10 @@
 //
 
 #define SOCI_POSTGRESQL_SOURCE
-#include "soci/postgresql/soci-postgresql.h"
-#include "soci/blob.h"
-#include "soci/rowid.h"
-#include "soci/soci-platform.h"
-#include "soci-dtocstr.h"
-#include "soci-exchange-cast.h"
+#include "soci-postgresql.h"
+#include "blob.h"
+#include "rowid.h"
+#include <soci-platform.h>
 #include <libpq/libpq-fs.h> // libpq
 #include <cctype>
 #include <cstdio>
@@ -25,6 +23,11 @@
 #define SOCI_POSTGRESQL_NOBINDBYNAME
 #endif // SOCI_POSTGRESQL_NOBINDBYNAME
 #endif // SOCI_POSTGRESQL_NOPARAMS
+
+#ifdef _MSC_VER
+#pragma warning(disable:4355 4996)
+#define snprintf _snprintf
+#endif
 
 using namespace soci;
 using namespace soci::details;
@@ -65,15 +68,15 @@ void postgresql_standard_use_type_backend::pre_use(indicator const * ind)
         case x_char:
             {
                 buf_ = new char[2];
-                buf_[0] = exchange_type_cast<x_char>(data_);
+                buf_[0] = *static_cast<char *>(data_);
                 buf_[1] = '\0';
             }
             break;
         case x_stdstring:
             {
-                std::string const& s = exchange_type_cast<x_stdstring>(data_);
-                buf_ = new char[s.size() + 1];
-                std::strcpy(buf_, s.c_str());
+                std::string * s = static_cast<std::string *>(data_);
+                buf_ = new char[s->size() + 1];
+                std::strcpy(buf_, s->c_str());
             }
             break;
         case x_short:
@@ -82,7 +85,7 @@ void postgresql_standard_use_type_backend::pre_use(indicator const * ind)
                     = std::numeric_limits<short>::digits10 + 3;
                 buf_ = new char[bufSize];
                 snprintf(buf_, bufSize, "%d",
-                    static_cast<int>(exchange_type_cast<x_short>(data_)));
+                    static_cast<int>(*static_cast<short *>(data_)));
             }
             break;
         case x_integer:
@@ -91,7 +94,7 @@ void postgresql_standard_use_type_backend::pre_use(indicator const * ind)
                     = std::numeric_limits<int>::digits10 + 3;
                 buf_ = new char[bufSize];
                 snprintf(buf_, bufSize, "%d",
-                    exchange_type_cast<x_integer>(data_));
+                    *static_cast<int *>(data_));
             }
             break;
         case x_long_long:
@@ -100,7 +103,7 @@ void postgresql_standard_use_type_backend::pre_use(indicator const * ind)
                     = std::numeric_limits<long long>::digits10 + 3;
                 buf_ = new char[bufSize];
                 snprintf(buf_, bufSize, "%" LL_FMT_FLAGS "d",
-                    exchange_type_cast<x_long_long>(data_));
+                    *static_cast<long long *>(data_));
             }
             break;
         case x_unsigned_long_long:
@@ -109,15 +112,18 @@ void postgresql_standard_use_type_backend::pre_use(indicator const * ind)
                     = std::numeric_limits<unsigned long long>::digits10 + 2;
                 buf_ = new char[bufSize];
                 snprintf(buf_, bufSize, "%" LL_FMT_FLAGS "u",
-                    exchange_type_cast<x_unsigned_long_long>(data_));
+                    *static_cast<unsigned long long *>(data_));
             }
             break;
         case x_double:
             {
-                std::string const s = double_to_cstring(exchange_type_cast<x_double>(data_));
+                // no need to overengineer it (KISS)...
 
-                buf_ = new char[s.size() + 1];
-                std::strcpy(buf_, s.c_str());
+                std::size_t const bufSize = 100;
+                buf_ = new char[bufSize];
+
+                snprintf(buf_, bufSize, "%.20g",
+                    *static_cast<double *>(data_));
             }
             break;
         case x_stdtm:
@@ -125,10 +131,10 @@ void postgresql_standard_use_type_backend::pre_use(indicator const * ind)
                 std::size_t const bufSize = 20;
                 buf_ = new char[bufSize];
 
-                std::tm const& t = exchange_type_cast<x_stdtm>(data_);
+                std::tm * t = static_cast<std::tm *>(data_);
                 snprintf(buf_, bufSize, "%d-%02d-%02d %02d:%02d:%02d",
-                    t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                    t.tm_hour, t.tm_min, t.tm_sec);
+                    t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                    t->tm_hour, t->tm_min, t->tm_sec);
             }
             break;
         case x_rowid:

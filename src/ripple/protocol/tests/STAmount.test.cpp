@@ -33,73 +33,46 @@ public:
         Serializer ser;
         s.add (ser);
 
-        SerialIter sit (ser.slice());
+        SerialIter sit (ser);
         return STAmount(sit, sfGeneric);
     }
 
     //--------------------------------------------------------------------------
-    STAmount roundSelf (STAmount const& amount)
-    {
-        if (amount.native ())
-            return amount;
 
-        std::uint64_t mantissa = amount.mantissa ();
-        std::uint64_t valueDigits = mantissa % 1000000000;
-
-        if (valueDigits == 1)
-        {
-            mantissa--;
-
-            if (mantissa < STAmount::cMinValue)
-                return { amount.issue (), mantissa, amount.exponent (),
-                    amount.negative () };
-
-            return { amount.issue (), mantissa, amount.exponent (),
-                amount.native(), amount.negative (), STAmount::unchecked {} };
-        }
-
-        if (valueDigits == 999999999)
-        {
-            mantissa++;
-
-            if (mantissa > STAmount::cMaxValue)
-                return { amount.issue (), mantissa, amount.exponent (),
-                    amount.negative () };
-
-            return { amount.issue (), mantissa, amount.exponent (),
-                amount.native(), amount.negative (), STAmount::unchecked {} };
-        }
-
-        return amount;
-    }
-
-    void roundTest (int n, int d, int m)
+    bool roundTest (int n, int d, int m)
     {
         // check STAmount rounding
         STAmount num (noIssue(), n);
         STAmount den (noIssue(), d);
         STAmount mul (noIssue(), m);
         STAmount quot = divide (n, d, noIssue());
-        STAmount res = roundSelf (multiply (quot, mul, noIssue()));
+        STAmount res = multiply (quot, mul, noIssue());
 
-        expect (! res.native (), "Product should not be native");
+        expect (! res.isNative (), "Product should not be native");
+
+        res.roundSelf ();
 
         STAmount cmp (noIssue(), (n * m) / d);
 
-        expect (! cmp.native (), "Comparison amount should not be native");
-
-        expect (cmp.issue().currency == res.issue().currency,
-            "Product and result should be comparable");
+        expect (! cmp.isNative (), "Comparison amount should not be native");
 
         if (res != cmp)
         {
-            log <<
-                "(" << num.getText () << "/" << den.getText () <<
-                ") X " << mul.getText () << " = " << res.getText () <<
-                " not " << cmp.getText ();
+            cmp.throwComparable (res);
+
+            WriteLog (lsWARNING, STAmount) << "(" << num.getText () << "/" << den.getText () << ") X " << mul.getText () << " = "
+                                       << res.getText () << " not " << cmp.getText ();
+
             fail ("Rounding");
-            return;
+
+            return false;
         }
+        else
+        {
+            pass ();
+        }
+
+        return true;
     }
 
     void mulTest (int a, int b)
@@ -108,16 +81,20 @@ public:
         STAmount bb (noIssue(), b);
         STAmount prod1 (multiply (aa, bb, noIssue()));
 
-        expect (! prod1.native ());
+        expect (! prod1.isNative ());
 
         STAmount prod2 (noIssue(), static_cast<std::uint64_t> (a) * static_cast<std::uint64_t> (b));
 
         if (prod1 != prod2)
         {
-            log <<
-                "nn(" << aa.getFullText () << " * " << bb.getFullText () <<
-                ") = " << prod1.getFullText () << " not " << prod2.getFullText ();
+            WriteLog (lsWARNING, STAmount) << "nn(" << aa.getFullText () << " * " << bb.getFullText () << ") = " << prod1.getFullText ()
+                                           << " not " << prod2.getFullText ();
+
             fail ("Multiplication result is not exact");
+        }
+        else
+        {
+            pass ();
         }
     }
 
@@ -126,15 +103,14 @@ public:
     void testSetValue (
         std::string const& value, Issue const& issue, bool success = true)
     {
-        try
-        {
-            STAmount const amount = amountFromString (issue, value);
+        STAmount amount (issue);
+
+        bool const result = amount.setValue (value);
+
+        expect (result == success, "parse " + value);
+
+        if (success)
             expect (amount.getText () == value, "format " + value);
-        }
-        catch (std::exception const&)
-        {
-            expect (!success, "parse " + value + " should fail");
-        }
     }
 
     void testSetValue ()
@@ -142,40 +118,40 @@ public:
         {
             testcase ("set value (native)");
 
-            Issue const xrp (xrpIssue ());
+            Issue const icc (iccIssue ());
 
-            // fractional XRP (i.e. drops)
-            testSetValue ("1", xrp);
-            testSetValue ("22", xrp);
-            testSetValue ("333", xrp);
-            testSetValue ("4444", xrp);
-            testSetValue ("55555", xrp);
-            testSetValue ("666666", xrp);
+            // fractional ICC (i.e. drops)
+            testSetValue ("1", icc);
+            testSetValue ("22", icc);
+            testSetValue ("333", icc);
+            testSetValue ("4444", icc);
+            testSetValue ("55555", icc);
+            testSetValue ("666666", icc);
 
-            // 1 XRP up to 100 billion, in powers of 10 (in drops)
-            testSetValue ("1000000", xrp);
-            testSetValue ("10000000", xrp);
-            testSetValue ("100000000", xrp);
-            testSetValue ("1000000000", xrp);
-            testSetValue ("10000000000", xrp);
-            testSetValue ("100000000000", xrp);
-            testSetValue ("1000000000000", xrp);
-            testSetValue ("10000000000000", xrp);
-            testSetValue ("100000000000000", xrp);
-            testSetValue ("1000000000000000", xrp);
-            testSetValue ("10000000000000000", xrp);
-            testSetValue ("100000000000000000", xrp);
+            // 1 ICC up to 100 billion, in powers of 10 (in drops)
+            testSetValue ("1000000", icc);
+            testSetValue ("10000000", icc);
+            testSetValue ("100000000", icc);
+            testSetValue ("1000000000", icc);
+            testSetValue ("10000000000", icc);
+            testSetValue ("100000000000", icc);
+            testSetValue ("1000000000000", icc);
+            testSetValue ("10000000000000", icc);
+            testSetValue ("100000000000000", icc);
+            testSetValue ("1000000000000000", icc);
+            testSetValue ("10000000000000000", icc);
+            testSetValue ("100000000000000000", icc);
 
             // Invalid native values:
-            testSetValue ("1.1", xrp, false);
-            testSetValue ("100000000000000001", xrp, false);
-            testSetValue ("1000000000000000000", xrp, false);
+            testSetValue ("1.1", icc, false);
+            testSetValue ("100000000000000001", icc, false);
+            testSetValue ("1000000000000000000", icc, false);
         }
 
         {
             testcase ("set value (iou)");
 
-            Issue const usd (Currency (0x5553440000000000), AccountID (0x4985601));
+            Issue const usd (Currency (0x5553440000000000), Account (0x4985601));
 
             testSetValue ("1", usd);
             testSetValue ("10", usd);
@@ -211,8 +187,8 @@ public:
         unexpected (serializeAndDeserialize (zeroSt) != zeroSt, "STAmount fail");
         unexpected (serializeAndDeserialize (one) != one, "STAmount fail");
         unexpected (serializeAndDeserialize (hundred) != hundred, "STAmount fail");
-        unexpected (!zeroSt.native (), "STAmount fail");
-        unexpected (!hundred.native (), "STAmount fail");
+        unexpected (!zeroSt.isNative (), "STAmount fail");
+        unexpected (!hundred.isNative (), "STAmount fail");
         unexpected (zeroSt != zero, "STAmount fail");
         unexpected (one == zero, "STAmount fail");
         unexpected (hundred == zero, "STAmount fail");
@@ -273,7 +249,7 @@ public:
         unexpected (STAmount ().getText () != "0", "STAmount fail");
         unexpected (STAmount (31).getText () != "31", "STAmount fail");
         unexpected (STAmount (310).getText () != "310", "STAmount fail");
-        unexpected (to_string (Currency ()) != "XRP", "cHC(XRP)");
+        unexpected (to_string (Currency ()) != "ICC", "cHC(ICC)");
         Currency c;
         unexpected (!to_currency (c, "USD"), "create USD currency");
         unexpected (to_string (c) != "USD", "check USD currency");
@@ -281,8 +257,7 @@ public:
         const std::string cur = "015841551A748AD2C1F76FF6ECB0CCCD00000000";
         unexpected (!to_currency (c, cur), "create custom currency");
         unexpected (to_string (c) != cur, "check custom currency");
-        unexpected (c != Currency (
-            from_hex_text<Currency>(cur)), "check custom currency");
+        unexpected (c != Currency (cur), "check custom currency");
     }
 
     //--------------------------------------------------------------------------
@@ -294,8 +269,8 @@ public:
         unexpected (serializeAndDeserialize (zeroSt) != zeroSt, "STAmount fail");
         unexpected (serializeAndDeserialize (one) != one, "STAmount fail");
         unexpected (serializeAndDeserialize (hundred) != hundred, "STAmount fail");
-        unexpected (zeroSt.native (), "STAmount fail");
-        unexpected (hundred.native (), "STAmount fail");
+        unexpected (zeroSt.isNative (), "STAmount fail");
+        unexpected (hundred.isNative (), "STAmount fail");
         unexpected (zeroSt != zero, "STAmount fail");
         unexpected (one == zero, "STAmount fail");
         unexpected (hundred == zero, "STAmount fail");
@@ -360,16 +335,16 @@ public:
         unexpected (STAmount (noIssue(), 31, -2).getText () != "0.31", "STAmount fail");
         unexpected (multiply (STAmount (noIssue(), 20), STAmount (3), noIssue()).getText () != "60",
             "STAmount multiply fail 1");
-        unexpected (multiply (STAmount (noIssue(), 20), STAmount (3), xrpIssue ()).getText () != "60",
+        unexpected (multiply (STAmount (noIssue(), 20), STAmount (3), iccIssue ()).getText () != "60",
             "STAmount multiply fail 2");
         unexpected (multiply (STAmount (20), STAmount (3), noIssue()).getText () != "60",
             "STAmount multiply fail 3");
-        unexpected (multiply (STAmount (20), STAmount (3), xrpIssue ()).getText () != "60",
+        unexpected (multiply (STAmount (20), STAmount (3), iccIssue ()).getText () != "60",
             "STAmount multiply fail 4");
 
         if (divide (STAmount (noIssue(), 60), STAmount (3), noIssue()).getText () != "20")
         {
-            log << "60/3 = " <<
+            WriteLog (lsFATAL, STAmount) << "60/3 = " <<
                 divide (STAmount (noIssue(), 60),
                     STAmount (3), noIssue()).getText ();
             fail ("STAmount divide fail");
@@ -379,13 +354,13 @@ public:
             pass ();
         }
 
-        unexpected (divide (STAmount (noIssue(), 60), STAmount (3), xrpIssue ()).getText () != "20",
+        unexpected (divide (STAmount (noIssue(), 60), STAmount (3), iccIssue ()).getText () != "20",
             "STAmount divide fail");
 
         unexpected (divide (STAmount (noIssue(), 60), STAmount (noIssue(), 3), noIssue()).getText () != "20",
             "STAmount divide fail");
 
-        unexpected (divide (STAmount (noIssue(), 60), STAmount (noIssue(), 3), xrpIssue ()).getText () != "20",
+        unexpected (divide (STAmount (noIssue(), 60), STAmount (noIssue(), 3), iccIssue ()).getText () != "20",
             "STAmount divide fail");
 
         STAmount a1 (noIssue(), 60), a2 (noIssue(), 10, -1);
@@ -414,7 +389,7 @@ public:
 
             if (b.getuint64 () != r)
             {
-                log << r << " != " << b.getuint64 () << " " << b.ToString (16);
+                WriteLog (lsFATAL, STAmount) << r << " != " << b.getuint64 () << " " << b.ToString (16);
                 fail ("setull64/getull64 failure");
             }
             else
@@ -486,19 +461,19 @@ public:
 
 #if 0
         // TODO(tom): this test makes no sense - we should have no way to have
-        // the currency not be XRP while the account is XRP.
-        bigDsmall = divide (smallValue, bigNative, noCurrency(), xrpAccount ());
+        // the currency not be ICC while the account is ICC.
+        bigDsmall = divide (smallValue, bigNative, noCurrency(), iccAccount ());
 #endif
 
         expect (bigDsmall == zero,
             "small/bigNative != 0: " + bigDsmall.getText ());
 
-        bigDsmall = divide (smallValue, bigValue, xrpIssue ());
+        bigDsmall = divide (smallValue, bigValue, iccIssue ());
 
         expect (bigDsmall == zero,
             "(small/big)->N != 0: " + bigDsmall.getText ());
 
-        bigDsmall = divide (smallValue, bigNative, xrpIssue ());
+        bigDsmall = divide (smallValue, bigNative, iccIssue ());
 
         expect (bigDsmall == zero,
             "(small/bigNative)->N != 0: " + bigDsmall.getText ());
@@ -535,100 +510,36 @@ public:
         STAmount oneThird1 = divRound (one, three, noIssue(), false);
         STAmount oneThird2 = divide (one, three, noIssue());
         STAmount oneThird3 = divRound (one, three, noIssue(), true);
-        log << oneThird1;
-        log << oneThird2;
-        log << oneThird3;
+        WriteLog (lsINFO, STAmount) << oneThird1;
+        WriteLog (lsINFO, STAmount) << oneThird2;
+        WriteLog (lsINFO, STAmount) << oneThird3;
 
         STAmount twoThird1 = divRound (two, three, noIssue(), false);
         STAmount twoThird2 = divide (two, three, noIssue());
         STAmount twoThird3 = divRound (two, three, noIssue(), true);
-        log << twoThird1;
-        log << twoThird2;
-        log << twoThird3;
+        WriteLog (lsINFO, STAmount) << twoThird1;
+        WriteLog (lsINFO, STAmount) << twoThird2;
+        WriteLog (lsINFO, STAmount) << twoThird3;
 
         STAmount oneA = mulRound (oneThird1, three, noIssue(), false);
         STAmount oneB = multiply (oneThird2, three, noIssue());
         STAmount oneC = mulRound (oneThird3, three, noIssue(), true);
-        log << oneA;
-        log << oneB;
-        log << oneC;
+        WriteLog (lsINFO, STAmount) << oneA;
+        WriteLog (lsINFO, STAmount) << oneB;
+        WriteLog (lsINFO, STAmount) << oneC;
 
         STAmount fourThirdsB = twoThird2 + twoThird2;
-        log << fourThirdsA;
-        log << fourThirdsB;
-        log << fourThirdsC;
+        WriteLog (lsINFO, STAmount) << fourThirdsA;
+        WriteLog (lsINFO, STAmount) << fourThirdsB;
+        WriteLog (lsINFO, STAmount) << fourThirdsC;
 
-        STAmount dripTest1 = mulRound (twoThird2, two, xrpIssue (), false);
-        STAmount dripTest2 = multiply (twoThird2, two, xrpIssue ());
-        STAmount dripTest3 = mulRound (twoThird2, two, xrpIssue (), true);
-        log << dripTest1;
-        log << dripTest2;
-        log << dripTest3;
+        STAmount dripTest1 = mulRound (twoThird2, two, iccIssue (), false);
+        STAmount dripTest2 = multiply (twoThird2, two, iccIssue ());
+        STAmount dripTest3 = mulRound (twoThird2, two, iccIssue (), true);
+        WriteLog (lsINFO, STAmount) << dripTest1;
+        WriteLog (lsINFO, STAmount) << dripTest2;
+        WriteLog (lsINFO, STAmount) << dripTest3;
 #endif
-    }
-
-    void
-    testConvertXRP ()
-    {
-        testcase ("STAmount to XRPAmount conversions");
-
-        Issue const usd { Currency (0x5553440000000000), AccountID (0x4985601) };
-        Issue const xrp { xrpIssue () };
-
-        for (std::uint64_t drops = 100000000000000000; drops != 1; drops = drops / 10)
-        {
-            auto const t = amountFromString (xrp, std::to_string (drops));
-            auto const s = t.xrp ();
-            expect (s.drops() == drops);
-            expect (t == STAmount (XRPAmount (drops)));
-            expect (s == XRPAmount (drops));
-        }
-
-        try
-        {
-            auto const t = amountFromString (usd, "136500");
-            fail (to_string (t.xrp ()));
-        }
-        catch (std::logic_error const&)
-        {
-            pass ();
-        }
-        catch (...)
-        {
-            fail ("wrong exception");
-        }
-    }
-
-    void
-    testConvertIOU ()
-    {
-        testcase ("STAmount to IOUAmount conversions");
-
-        Issue const usd { Currency (0x5553440000000000), AccountID (0x4985601) };
-        Issue const xrp { xrpIssue () };
-
-        for (std::uint64_t dollars = 10000000000; dollars != 1; dollars = dollars / 10)
-        {
-            auto const t = amountFromString (usd, std::to_string (dollars));
-            auto const s = t.iou ();
-            expect (t == STAmount (s, usd));
-            expect (s.mantissa () == t.mantissa ());
-            expect (s.exponent () == t.exponent ());
-        }
-
-        try
-        {
-            auto const t = amountFromString (xrp, "136500");
-            fail (to_string (t.iou ()));
-        }
-        catch (std::logic_error const&)
-        {
-            pass ();
-        }
-        catch (...)
-        {
-            fail ("wrong exception");
-        }
     }
 
     //--------------------------------------------------------------------------
@@ -641,8 +552,6 @@ public:
         testArithmetic ();
         testUnderflow ();
         testRounding ();
-        testConvertXRP ();
-        testConvertIOU ();
     }
 };
 

@@ -18,16 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/ledger/TransactionMaster.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/app/misc/Transaction.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/Utilities.h>
+#include <ripple/app/tx/TransactionMaster.h>
 
 namespace ripple {
 
@@ -51,39 +42,6 @@ isHexTxID (std::string const& txid)
     return (ret == txid.end ());
 }
 
-static
-bool
-isValidated (RPC::Context& context, std::uint32_t seq, uint256 const& hash)
-{
-    if (!context.ledgerMaster.haveLedger (seq))
-        return false;
-
-    if (seq > context.ledgerMaster.getValidatedLedger ()->info().seq)
-        return false;
-
-    return context.ledgerMaster.getHashBySeq (seq) == hash;
-}
-
-bool
-getMetaHex (Ledger const& ledger,
-    uint256 const& transID, std::string& hex)
-{
-    SHAMapTreeNode::TNType type;
-    auto const item =
-        ledger.txMap().peekItem (transID, type);
-
-    if (!item)
-        return false;
-
-    if (type != SHAMapTreeNode::tnTRANSACTION_MD)
-        return false;
-
-    SerialIter it (item->slice());
-    it.getVL (); // skip transaction
-    hex = strHex (makeSlice(it.getVL ()));
-    return true;
-}
-
 Json::Value doTx (RPC::Context& context)
 {
     if (!context.params.isMember (jss::transaction))
@@ -97,8 +55,7 @@ Json::Value doTx (RPC::Context& context)
     if (!isHexTxID (txid))
         return rpcError (rpcNOT_IMPL);
 
-    auto txn = context.app.getMasterTransaction ().fetch (
-        from_hex_text<uint256>(txid), true);
+    auto txn = getApp().getMasterTransaction ().fetch (uint256 (txid), true);
 
     if (!txn)
         return rpcError (rpcTXN_NOT_FOUND);
@@ -108,7 +65,7 @@ Json::Value doTx (RPC::Context& context)
     if (txn->getLedger () == 0)
         return ret;
 
-    if (auto lgr = context.ledgerMaster.getLedgerBySeq (txn->getLedger ()))
+    if (auto lgr = context.netOps.getLedgerBySeq (txn->getLedger ()))
     {
         bool okay = false;
 
@@ -116,7 +73,7 @@ Json::Value doTx (RPC::Context& context)
         {
             std::string meta;
 
-            if (getMetaHex (*lgr, txn->getID (), meta))
+            if (lgr->getMetaHex (txn->getID (), meta))
             {
                 ret[jss::meta] = meta;
                 okay = true;
@@ -124,11 +81,10 @@ Json::Value doTx (RPC::Context& context)
         }
         else
         {
-            auto rawMeta = lgr->txRead (txn->getID()).second;
-            if (rawMeta)
+            TransactionMetaSet::pointer txMeta;
+
+            if (lgr->getTransactionMeta (txn->getID (), txMeta))
             {
-                auto txMeta = std::make_shared<TxMeta> (txn->getID (),
-                    lgr->seq (), *rawMeta, context.app.journal ("TxMeta"));
                 okay = true;
                 auto meta = txMeta->getJson (0);
                 addPaymentDeliveredAmount (meta, context, txn, txMeta);
@@ -137,8 +93,7 @@ Json::Value doTx (RPC::Context& context)
         }
 
         if (okay)
-            ret[jss::validated] = isValidated (
-                context, lgr->info().seq, lgr->getHash ());
+            ret[jss::validated] = context.netOps.isValidated (lgr);
     }
 
     return ret;

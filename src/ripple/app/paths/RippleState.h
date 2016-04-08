@@ -20,55 +20,42 @@
 #ifndef RIPPLE_APP_PATHS_RIPPLESTATE_H_INCLUDED
 #define RIPPLE_APP_PATHS_RIPPLESTATE_H_INCLUDED
 
-#include <ripple/ledger/View.h>
+#include <ripple/app/book/Types.h>
 #include <ripple/protocol/STAmount.h>
-#include <ripple/protocol/STLedgerEntry.h>
 #include <cstdint>
-#include <memory> // <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 
-/** Wraps a trust line SLE for convenience.
-    The complication of trust lines is that there is a
-    "low" account and a "high" account. This wraps the
-    SLE and expresses its data from the perspective of
-    a chosen account on the line.
-*/
-// VFALCO TODO Rename to TrustLine
+//
+// A ripple line's state.
+// - Isolate ledger entry format.
+//
+
 class RippleState
 {
 public:
-    // VFALCO Why is this shared_ptr?
-    using pointer = std::shared_ptr <RippleState>;
+    typedef std::shared_ptr <RippleState> pointer;
 
 public:
     RippleState () = delete;
 
-    virtual ~RippleState() = default;
+    virtual ~RippleState () { }
 
-    static RippleState::pointer makeItem(
-        AccountID const& accountID,
-        std::shared_ptr<SLE const> sle);
+    static RippleState::pointer makeItem (
+        Account const& accountID, STLedgerEntry::ref ledgerEntry);
 
-    // Must be public, for make_shared
-    RippleState (std::shared_ptr<SLE const>&& sle,
-        AccountID const& viewAccount);
-
-    /** Returns the state map key for the ledger entry. */
-    uint256
-    key() const
+    LedgerEntryType getType ()
     {
-        return mLedgerEntry->getIndex();
+        return ltRIPPLE_STATE;
     }
 
-    // VFALCO Take off the "get" from each function name
-
-    AccountID const& getAccountID () const
+    Account const& getAccountID () const
     {
         return  mViewLowest ? mLowID : mHighID;
     }
 
-    AccountID const& getAccountIDPeer () const
+    Account const& getAccountIDPeer () const
     {
         return !mViewLowest ? mLowID : mHighID;
     }
@@ -131,10 +118,32 @@ public:
         return ((std::uint32_t) (mViewLowest ? mLowQualityOut : mHighQualityOut));
     }
 
+    STLedgerEntry::pointer getSLE ()
+    {
+        return mLedgerEntry;
+    }
+
+    const STLedgerEntry& peekSLE () const
+    {
+        return *mLedgerEntry;
+    }
+
+    STLedgerEntry& peekSLE ()
+    {
+        return *mLedgerEntry;
+    }
+
     Json::Value getJson (int);
 
+    Blob getRaw () const;
+
 private:
-    std::shared_ptr<SLE const> mLedgerEntry;
+    RippleState (
+        STLedgerEntry::ref ledgerEntry,
+        Account const& viewAccount);
+
+private:
+    STLedgerEntry::pointer  mLedgerEntry;
 
     bool                            mViewLowest;
 
@@ -143,8 +152,8 @@ private:
     STAmount const&                 mLowLimit;
     STAmount const&                 mHighLimit;
 
-    AccountID const&                  mLowID;
-    AccountID const&                  mHighID;
+    Account const&                  mLowID;
+    Account const&                  mHighID;
 
     std::uint64_t                   mLowQualityIn;
     std::uint64_t                   mLowQualityOut;
@@ -155,8 +164,9 @@ private:
 };
 
 std::vector <RippleState::pointer>
-getRippleStateItems (AccountID const& accountID,
-    ReadView const& view);
+getRippleStateItems (
+    Account const& accountID,
+    Ledger::ref ledger);
 
 } // ripple
 

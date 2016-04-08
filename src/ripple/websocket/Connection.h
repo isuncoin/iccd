@@ -24,20 +24,18 @@
 #include <ripple/app/misc/NetworkOPs.h>
 #include <ripple/basics/CountedObject.h>
 #include <ripple/basics/Log.h>
+#include <ripple/core/Config.h>
 #include <ripple/json/to_string.h>
 #include <ripple/net/InfoSub.h>
 #include <ripple/net/RPCErr.h>
 #include <ripple/protocol/ErrorCodes.h>
 #include <ripple/protocol/JsonFields.h>
 #include <ripple/resource/Fees.h>
-#include <ripple/resource/ResourceManager.h>
-#include <ripple/rpc/Coroutine.h>
+#include <ripple/resource/Manager.h>
 #include <ripple/rpc/RPCHandler.h>
 #include <ripple/server/Port.h>
-#include <ripple/server/Role.h>
 #include <ripple/json/to_string.h>
 #include <ripple/rpc/RPCHandler.h>
-#include <ripple/rpc/Yield.h>
 #include <ripple/server/Role.h>
 #include <ripple/websocket/WebSocket.h>
 
@@ -69,7 +67,6 @@ public:
     using handler_type = HandlerImpl <WebSocket>;
 
     ConnectionImpl (
-        Application& app,
         Resource::Manager& resourceManager,
         InfoSub::Source& source,
         handler_type& handler,
@@ -97,16 +94,16 @@ public:
     message_ptr getMessage ();
     bool checkMessage ();
     void returnMessage (message_ptr const&);
-    Json::Value invokeCommand (Json::Value const& jvRequest, RPC::Suspend const&);
+    Json::Value invokeCommand (Json::Value& jvRequest);
 
     // Generically implemented per version.
     void setPingTimer ();
 
 private:
-    Application& app_;
     HTTP::Port const& m_port;
     Resource::Manager& m_resourceManager;
     Resource::Consumer m_usage;
+    bool const m_isPublic;
     beast::IP::Endpoint const m_remoteAddress;
     std::mutex m_receiveQueueMutex;
     std::deque <message_ptr> m_receiveQueue;
@@ -120,36 +117,28 @@ private:
 
     handler_type& m_handler;
     weak_connection_ptr m_connection;
-
-    int pingFreq_;
-    beast::Journal j_;
 };
 
 template <class WebSocket>
 ConnectionImpl <WebSocket>::ConnectionImpl (
-    Application& app,
     Resource::Manager& resourceManager,
     InfoSub::Source& source,
     handler_type& handler,
     connection_ptr const& cpConnection,
     beast::IP::Endpoint const& remoteAddress,
     boost::asio::io_service& io_service)
-        : InfoSub (source, requestInboundEndpoint (
-            resourceManager, remoteAddress, handler.port()))
-        , app_(app)
+        : InfoSub (source, // usage
+                   resourceManager.newInboundEndpoint (remoteAddress))
         , m_port (handler.port ())
         , m_resourceManager (resourceManager)
+        , m_isPublic (handler.getPublic ())
         , m_remoteAddress (remoteAddress)
-        , m_netOPs (app_.getOPs ())
+        , m_netOPs (getApp ().getOPs ())
         , m_io_service (io_service)
         , m_pingTimer (io_service)
         , m_handler (handler)
         , m_connection (cpConnection)
-        , pingFreq_ (app.config ().WEBSOCKET_PING_FREQ)
-        , j_ (app.journal ("ConnectionImpl"))
 {
-    // VFALCO Disabled since it might cause hangs
-    pingFreq_ = 0;
 }
 
 template <class WebSocket>
@@ -162,7 +151,7 @@ template <class WebSocket>
 void ConnectionImpl <WebSocket>::rcvMessage (
     message_ptr const& msg, bool& msgRejected, bool& runQueue)
 {
-    JLOG (j_.warning)
+    WriteLog (lsWARNING, ConnectionImpl)
             << "WebSocket: rcvMessage";
     ScopedLockType sl (m_receiveQueueMutex);
 
@@ -239,8 +228,7 @@ void ConnectionImpl <WebSocket>::returnMessage (message_ptr const& ptr)
 }
 
 template <class WebSocket>
-Json::Value ConnectionImpl <WebSocket>::invokeCommand (
-    Json::Value const& jvRequest, RPC::Suspend const& suspend)
+Json::Value ConnectionImpl <WebSocket>::invokeCommand (Json::Value& jvRequest)
 {
     if (getConsumer().disconnect ())
     {
@@ -273,7 +261,7 @@ Json::Value ConnectionImpl <WebSocket>::invokeCommand (
     Json::Value jvResult (Json::objectValue);
 
     auto required = RPC::roleRequired (jvRequest[jss::command].asString());
-    auto role = requestRole (required, m_port, jvRequest, m_remoteAddress);
+    Role const role = requestRole (required, m_port, jvRequest, m_remoteAddress);
 
     if (Role::FORBID == role)
     {
@@ -282,9 +270,8 @@ Json::Value ConnectionImpl <WebSocket>::invokeCommand (
     else
     {
         RPC::Context context {
-            app_.journal ("RPCHandler"), jvRequest, app_, loadType, m_netOPs, app_.getLedgerMaster(),
-            role, {app_, suspend, "WSClient::command"},
-            this->shared_from_this ()};
+            jvRequest, loadType, m_netOPs, role,
+            std::dynamic_pointer_cast<InfoSub> (this->shared_from_this ())};
         RPC::doCommand (context, jvResult[jss::result]);
     }
 
@@ -338,7 +325,7 @@ void ConnectionImpl <WebSocket>::preDestroy ()
 template <class WebSocket>
 void ConnectionImpl <WebSocket>::send (Json::Value const& jvObj, bool broadcast)
 {
-    JLOG (j_.warning)
+    WriteLog (lsWARNING, ConnectionImpl)
             << "WebSocket: sending '" << to_string (jvObj);
     connection_ptr ptr = m_connection.lock ();
 
@@ -349,15 +336,14 @@ void ConnectionImpl <WebSocket>::send (Json::Value const& jvObj, bool broadcast)
 template <class WebSocket>
 void ConnectionImpl <WebSocket>::disconnect ()
 {
-    JLOG (j_.warning)
+    WriteLog (lsWARNING, ConnectionImpl)
             << "WebSocket: disconnecting";
     connection_ptr ptr = m_connection.lock ();
 
     if (ptr)
-        this->m_io_service.dispatch (
-            WebSocket::getStrand (*ptr).wrap (
-                std::bind(&ConnectionImpl <WebSocket>::handle_disconnect,
-                          m_connection)));
+        this->m_io_service.dispatch (WebSocket::getStrand (*ptr).wrap (std::bind (
+            &ConnectionImpl <WebSocket>::handle_disconnect,
+                m_connection)));
 }
 
 // static

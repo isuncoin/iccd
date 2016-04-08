@@ -22,7 +22,7 @@
 
 #include <ripple/server/impl/Peer.h>
 #include <beast/asio/ssl_bundle.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 namespace HTTP {

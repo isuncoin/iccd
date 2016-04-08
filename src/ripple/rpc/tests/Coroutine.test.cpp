@@ -30,101 +30,41 @@ class Coroutine_test : public TestOutputSuite
 public:
     using Strings = std::vector <std::string>;
 
-    void test (int chunkSize, Strings const& expected)
+    void test (std::string const& name, int chunkSize, Strings const& expected)
     {
-        auto name = std::to_string (chunkSize);
         setup (name);
 
         std::string buffer;
         Json::Output output = Json::stringOutput (buffer);
 
-        auto makeContinuation = [&] (std::string const& data) {
-            return Continuation ([=] (Callback const& cb) {
-                output (data + " ");
-                cb();
-            });
-        };
-
-        Strings result;
-        Coroutine coroutine ([&] (Suspend const& suspend)
+        auto coroutine = Coroutine ([=] (Yield yield)
         {
-            Callback yield ([=] () { suspend (makeContinuation ("*")); });
             auto out = chunkedYieldingOutput (output, yield, chunkSize);
             out ("hello ");
-            result.push_back (buffer);
-
-            suspend (makeContinuation("HELLO"));
-            result.push_back (buffer);
-
             out ("there ");
-            result.push_back (buffer);
-
-            suspend (makeContinuation("THERE"));
-            result.push_back (buffer);
-
-            out ("world ");
-            result.push_back (buffer);
-
-            suspend (makeContinuation("WORLD"));
-            result.push_back (buffer);
+            out ("world.");
         });
 
-        runOnCoroutine(UseCoroutines::yes, coroutine);
+        Strings result;
+        while (coroutine)
+        {
+            coroutine();
+            result.push_back (buffer);
+        }
+
         expectCollectionEquals (result, expected);
     }
 
     void run() override
     {
-        test (0, {"hello ",
-                  "hello HELLO ",
-                  "hello HELLO * there ",
-                  "hello HELLO * there THERE ",
-                  "hello HELLO * there THERE * world ",
-                  "hello HELLO * there THERE * world WORLD "
-                  });
-        test (3, {"hello ",
-                  "hello HELLO ",
-                  "hello HELLO * there ",
-                  "hello HELLO * there THERE ",
-                  "hello HELLO * there THERE * world ",
-                  "hello HELLO * there THERE * world WORLD "
-                  });
-        test (5, {"hello ",
-                  "hello HELLO ",
-                  "hello HELLO * there ",
-                  "hello HELLO * there THERE ",
-                  "hello HELLO * there THERE * world ",
-                  "hello HELLO * there THERE * world WORLD "
-                  });
-        test (7, {"hello ",
-                  "hello HELLO ",
-                  "hello HELLO there ",
-                  "hello HELLO there THERE ",
-                  "hello HELLO there THERE * world ",
-                  "hello HELLO there THERE * world WORLD "
-                  });
-        test (10, {"hello ",
-                   "hello HELLO ",
-                   "hello HELLO there ",
-                   "hello HELLO there THERE ",
-                   "hello HELLO there THERE * world ",
-                   "hello HELLO there THERE * world WORLD "
-                  });
-        test (13, {"hello ",
-                   "hello HELLO ",
-                   "hello HELLO there ",
-                   "hello HELLO there THERE ",
-                   "hello HELLO there THERE world ",
-                   "hello HELLO there THERE world WORLD "
-                  });
-        test (15, {"hello ",
-                   "hello HELLO ",
-                   "hello HELLO there ",
-                   "hello HELLO there THERE ",
-                   "hello HELLO there THERE world ",
-                   "hello HELLO there THERE world WORLD "
-                  });
-  }
+        test ("zero", 0, {"hello ", "hello there ", "hello there world."});
+        test ("three", 3, {"hello ", "hello there ", "hello there world."});
+        test ("five", 5, {"hello ", "hello there ", "hello there world."});
+        test ("seven", 7, {"hello there ", "hello there world."});
+        test ("ten", 10, {"hello there ", "hello there world."});
+        test ("thirteen", 13, {"hello there world."});
+        test ("fifteen", 15, {"hello there world."});
+    }
 };
 
 BEAST_DEFINE_TESTSUITE(Coroutine, RPC, ripple);

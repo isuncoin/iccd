@@ -61,7 +61,6 @@ public:
     using period = typename Clock::period;
     using duration = typename Clock::duration;
     using time_point = typename Clock::time_point;
-    using clock_type = Clock;
 
     static bool const is_steady = Clock::is_steady;
 
@@ -69,6 +68,12 @@ public:
 
     /** Returns the current time. */
     virtual time_point now() const = 0;
+
+    /** Returning elapsed ticks since the epoch. */
+    rep elapsed()
+    {
+        return now().time_since_epoch().count();
+    }
 };
 
 //------------------------------------------------------------------------------

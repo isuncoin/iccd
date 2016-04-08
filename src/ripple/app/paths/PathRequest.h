@@ -20,16 +20,9 @@
 #ifndef RIPPLE_APP_PATHS_PATHREQUEST_H_INCLUDED
 #define RIPPLE_APP_PATHS_PATHREQUEST_H_INCLUDED
 
-#include <ripple/app/ledger/Ledger.h>
-#include <ripple/app/paths/Pathfinder.h>
 #include <ripple/app/paths/RippleLineCache.h>
 #include <ripple/json/json_value.h>
 #include <ripple/net/InfoSub.h>
-#include <ripple/protocol/types.h>
-#include <boost/optional.hpp>
-#include <map>
-#include <mutex>
-#include <set>
 
 namespace ripple {
 
@@ -51,35 +44,29 @@ class PathRequest :
 public:
     static char const* getCountedObjectName () { return "PathRequest"; }
 
-    using wptr    = std::weak_ptr<PathRequest>;
-    using pointer = std::shared_ptr<PathRequest>;
-    using ref     = const pointer&;
-    using wref    = const wptr&;
+    typedef std::weak_ptr<PathRequest>    wptr;
+    typedef std::shared_ptr<PathRequest>  pointer;
+    typedef const pointer&                  ref;
+    typedef const wptr&                     wref;
 
 public:
     // VFALCO TODO Break the cyclic dependency on InfoSub
     PathRequest (
-        Application& app,
         std::shared_ptr <InfoSub> const& subscriber,
-        int id,
-        PathRequests&,
-        beast::Journal journal);
-
-    PathRequest (
-        Application& app,
-        std::function <void (void)> const& completion,
         int id,
         PathRequests&,
         beast::Journal journal);
 
     ~PathRequest ();
 
+    bool        isValid ();
     bool        isNew ();
     bool        needsUpdate (bool newOnly, LedgerIndex index);
     void        updateComplete ();
     Json::Value getStatus ();
 
     Json::Value doCreate (
+        const std::shared_ptr<Ledger>&,
         const RippleLineCache::pointer&,
         Json::Value const&,
         bool&);
@@ -89,50 +76,37 @@ public:
     // update jvStatus
     Json::Value doUpdate (const std::shared_ptr<RippleLineCache>&, bool fast);
     InfoSub::pointer getSubscriber ();
-    bool hasCompletion ();
 
 private:
-    using ScopedLockType = std::lock_guard <std::recursive_mutex>;
-
     bool isValid (RippleLineCache::ref crCache);
     void setValid ();
     void resetLevel (int level);
+    int parseJson (Json::Value const&, bool complete);
 
-    std::unique_ptr<Pathfinder> const&
-    getPathFinder(RippleLineCache::ref,
-        hash_map<Currency, std::unique_ptr<Pathfinder>>&, Currency const&,
-            STAmount const&, int const);
-
-    void
-    findPaths (RippleLineCache::ref, int const, Json::Value&);
-
-    int parseJson (Json::Value const&);
-
-    Application& app_;
     beast::Journal m_journal;
 
-    std::recursive_mutex mLock;
+    typedef RippleRecursiveMutex LockType;
+    typedef std::lock_guard <LockType> ScopedLockType;
+    LockType mLock;
 
     PathRequests& mOwner;
 
     std::weak_ptr<InfoSub> wpSubscriber; // Who this request came from
-    std::function <void (void)> fCompletion;
 
     Json::Value jvId;
     Json::Value jvStatus;                   // Last result
 
     // Client request parameters
-    boost::optional<AccountID> raSrcAccount;
-    boost::optional<AccountID> raDstAccount;
+    RippleAddress raSrcAccount;
+    RippleAddress raDstAccount;
     STAmount saDstAmount;
-    boost::optional<STAmount> saSendMax;
 
     std::set<Issue> sciSourceCurrencies;
     std::map<Issue, STPathSet> mContext;
 
-    bool convert_all_;
+    bool bValid;
 
-    std::recursive_mutex mIndexLock;
+    LockType mIndexLock;
     LedgerIndex mLastIndex;
     bool mInProgress;
 
@@ -144,8 +118,6 @@ private:
     boost::posix_time::ptime ptCreated;
     boost::posix_time::ptime ptQuickReply;
     boost::posix_time::ptime ptFullReply;
-
-    static unsigned int const max_paths_ = 4;
 };
 
 } // ripple

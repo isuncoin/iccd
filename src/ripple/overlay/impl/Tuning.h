@@ -46,31 +46,12 @@ enum
         consider it insane */
     insaneLedgerLimit   =  128,
 
-    /** The maximum number of ledger entries in a single
-        reply */
-    maxReplyNodes       = 8192,
-
     /** How many milliseconds to consider high latency
         on a peer connection */
-    peerHighLatency     =  250,
+    peerHighLatency     =  120,
 
     /** How often we check connections (seconds) */
     checkSeconds        =   10,
-
-    /** How often we latency/sendq probe connections */
-    timerSeconds        =    4,
-
-    /** How many timer intervals a sendq has to stay large before we disconnect */
-    sendqIntervals      =    4,
-
-    /** How many timer intervals we can go without a ping reply */
-    noPing              =   10,
-
-    /** How many messages on a send queue before we refuse queries */
-    dropSendQueue       =    8,
-
-    /** How many messages we consider reasonable sustained on a send queue */
-    targetSendQueue     =   16,
 };
 
 } // Tuning

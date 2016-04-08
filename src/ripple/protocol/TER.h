@@ -25,11 +25,10 @@
 namespace ripple {
 
 // See https://ripple.com/wiki/Transaction_errors
+
+// VFALCO TODO consider renaming TER to TxErr or TxResult for clarity.
 //
-// "Transaction Engine Result"
-// or Transaction ERror.
-//
-enum TER
+enum TER    // aka TransactionEngineResult
 {
     // Note: Range is stable.  Exact numbers are currently unstable.  Use tokens.
 
@@ -57,6 +56,7 @@ enum TER
     temMALFORMED    = -299,
 
     temBAD_AMOUNT,
+    temBAD_AUTH_MASTER,
     temBAD_CURRENCY,
     temBAD_EXPIRATION,
     temBAD_FEE,
@@ -65,11 +65,11 @@ enum TER
     temBAD_OFFER,
     temBAD_PATH,
     temBAD_PATH_LOOP,
-    temBAD_SEND_XRP_LIMIT,
-    temBAD_SEND_XRP_MAX,
-    temBAD_SEND_XRP_NO_DIRECT,
-    temBAD_SEND_XRP_PARTIAL,
-    temBAD_SEND_XRP_PATHS,
+    temBAD_SEND_ICC_LIMIT,
+    temBAD_SEND_ICC_MAX,
+    temBAD_SEND_ICC_NO_DIRECT,
+    temBAD_SEND_ICC_PARTIAL,
+    temBAD_SEND_ICC_PATHS,
     temBAD_SEQUENCE,
     temBAD_SIGNATURE,
     temBAD_SRC_ACCOUNT,
@@ -81,9 +81,6 @@ enum TER
     temREDUNDANT,
     temRIPPLE_EMPTY,
     temDISABLED,
-    temBAD_SIGNER,
-    temBAD_QUORUM,
-    temBAD_WEIGHT,
 
     // An intermediate result used internally, should never be returned.
     temUNCERTAIN,
@@ -114,10 +111,6 @@ enum TER
     tefWRONG_PRIOR,
     tefMASTER_DISABLED,
     tefMAX_LEDGER,
-    tefBAD_SIGNATURE,
-    tefBAD_QUORUM,
-    tefNOT_MULTI_SIGNING,
-    tefBAD_AUTH_MASTER,
 
     // -99 .. -1: R Retry
     //   sequence too high, no funds for txn fee, originating -account
@@ -144,7 +137,6 @@ enum TER
                          // burden network.
     terLAST,             // Process after all other transactions
     terNO_RIPPLE,        // Rippling not allowed
-    terQUEUED,           // Transaction is being held in TxQ until fee drops
 
     // 0: S Success (success)
     // Causes:
@@ -181,12 +173,12 @@ enum TER
     tecINSUF_RESERVE_LINE       = 122,
     tecINSUF_RESERVE_OFFER      = 123,
     tecNO_DST                   = 124,
-    tecNO_DST_INSUF_XRP         = 125,
+    tecNO_DST_INSUF_ICC         = 125,
     tecNO_LINE_INSUF_RESERVE    = 126,
     tecNO_LINE_REDUNDANT        = 127,
     tecPATH_DRY                 = 128,
     tecUNFUNDED                 = 129,  // Deprecated, old ambiguous unfunded.
-    tecNO_ALTERNATIVE_KEY       = 130,
+    tecMASTER_DISABLED          = 130,
     tecNO_REGULAR_KEY           = 131,
     tecOWNERS                   = 132,
     tecNO_ISSUER                = 133,
@@ -201,7 +193,6 @@ enum TER
     tecNEED_MASTER_KEY          = 142,
     tecDST_TAG_NEEDED           = 143,
     tecINTERNAL                 = 144,
-    tecOVERSIZE                 = 145,
 };
 
 inline bool isTelLocal(TER x)

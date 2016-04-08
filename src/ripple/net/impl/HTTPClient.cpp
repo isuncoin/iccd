@@ -20,6 +20,7 @@
 #include <BeastConfig.h>
 #include <ripple/basics/Log.h>
 #include <ripple/basics/StringUtilities.h>
+#include <ripple/core/Config.h>
 #include <ripple/net/HTTPClient.h>
 #include <ripple/websocket/AutoSocket.h>
 #include <beast/asio/placeholders.h>
@@ -39,28 +40,27 @@ namespace ripple {
 class HTTPClientSSLContext
 {
 public:
-    HTTPClientSSLContext (Config const& config)
+    HTTPClientSSLContext ()
         : m_context (boost::asio::ssl::context::sslv23)
-        , verify_ (config.SSL_VERIFY)
     {
         boost::system::error_code ec;
 
-        if (config.SSL_VERIFY_FILE.empty ())
+        if (getConfig().SSL_VERIFY_FILE.empty ())
         {
             m_context.set_default_verify_paths (ec);
 
-            if (ec && config.SSL_VERIFY_DIR.empty ())
+            if (ec && getConfig().SSL_VERIFY_DIR.empty ())
                 throw std::runtime_error (boost::str (
                     boost::format ("Failed to set_default_verify_paths: %s") % ec.message ()));
         }
         else
         {
-            m_context.load_verify_file (config.SSL_VERIFY_FILE);
+            m_context.load_verify_file (getConfig().SSL_VERIFY_FILE);
         }
 
-        if (! config.SSL_VERIFY_DIR.empty ())
+        if (! getConfig().SSL_VERIFY_DIR.empty ())
         {
-            m_context.add_verify_path (config.SSL_VERIFY_DIR, ec);
+            m_context.add_verify_path (getConfig().SSL_VERIFY_DIR, ec);
 
             if (ec)
                 throw std::runtime_error (boost::str (
@@ -73,21 +73,15 @@ public:
         return m_context;
     }
 
-    bool sslVerify() const
-    {
-        return verify_;
-    }
-
 private:
     boost::asio::ssl::context m_context;
-    bool verify_;
 };
 
 boost::optional<HTTPClientSSLContext> httpClientSSLContext;
 
-void HTTPClient::initializeSSLContext (Config const& config)
+void HTTPClient::initializeSSLContext ()
 {
-    httpClientSSLContext.emplace (config);
+    httpClientSSLContext = boost::in_place();
 }
 
 //------------------------------------------------------------------------------
@@ -98,18 +92,16 @@ class HTTPClientImp
 {
 public:
     HTTPClientImp (boost::asio::io_service& io_service,
-        const unsigned short port,
-        std::size_t responseMax,
-        Logs& l)
-        : mSocket (io_service, httpClientSSLContext->context (), l.journal ("AutoSocket"))
+                              const unsigned short port,
+                              std::size_t responseMax)
+        : mSocket (io_service, httpClientSSLContext->context())
         , mResolver (io_service)
         , mHeader (maxClientHeaderBytes)
         , mPort (port)
         , mResponseMax (responseMax)
         , mDeadline (io_service)
-        , j_ (l.journal ("HTTPClient"))
     {
-        if (!httpClientSSLContext->sslVerify())
+        if (!getConfig ().SSL_VERIFY)
             mSocket.SSLSocket ().set_verify_mode (boost::asio::ssl::verify_none);
     }
 
@@ -173,17 +165,18 @@ public:
 
     void httpsNext ()
     {
-        JLOG (j_.trace) << "Fetch: " << mDeqSites[0];
+        WriteLog (lsTRACE, HTTPClient) << "Fetch: " << mDeqSites[0];
 
-        auto query = std::make_shared<boost::asio::ip::tcp::resolver::query>(
+        std::shared_ptr <boost::asio::ip::tcp::resolver::query> query (
+            new boost::asio::ip::tcp::resolver::query (
                 mDeqSites[0],
                 beast::lexicalCast <std::string> (mPort),
-                boost::asio::ip::resolver_query_base::numeric_service);
+                boost::asio::ip::resolver_query_base::numeric_service));
         mQuery  = query;
 
         mDeadline.expires_from_now (mTimeout, mShutdown);
 
-        JLOG (j_.trace) << "expires_from_now: " << mShutdown.message ();
+        WriteLog (lsTRACE, HTTPClient) << "expires_from_now: " << mShutdown.message ();
 
         if (!mShutdown)
         {
@@ -196,7 +189,7 @@ public:
 
         if (!mShutdown)
         {
-            JLOG (j_.trace) << "Resolving: " << mDeqSites[0];
+            WriteLog (lsTRACE, HTTPClient) << "Resolving: " << mDeqSites[0];
 
             mResolver.async_resolve (*mQuery,
                                      std::bind (
@@ -215,20 +208,20 @@ public:
         if (ecResult == boost::asio::error::operation_aborted)
         {
             // Timer canceled because deadline no longer needed.
-            JLOG (j_.trace) << "Deadline cancelled.";
+            WriteLog (lsTRACE, HTTPClient) << "Deadline cancelled.";
 
             // Aborter is done.
         }
         else if (ecResult)
         {
-            JLOG (j_.trace) << "Deadline error: " << mDeqSites[0] << ": " << ecResult.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Deadline error: " << mDeqSites[0] << ": " << ecResult.message ();
 
             // Can't do anything sound.
             abort ();
         }
         else
         {
-            JLOG (j_.trace) << "Deadline arrived.";
+            WriteLog (lsTRACE, HTTPClient) << "Deadline arrived.";
 
             // Mark us as shutting down.
             // XXX Use our own error code.
@@ -252,7 +245,7 @@ public:
     {
         if (ecResult)
         {
-            JLOG (j_.trace) << "Shutdown error: " << mDeqSites[0] << ": " << ecResult.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Shutdown error: " << mDeqSites[0] << ": " << ecResult.message ();
         }
     }
 
@@ -266,13 +259,13 @@ public:
 
         if (mShutdown)
         {
-            JLOG (j_.trace) << "Resolve error: " << mDeqSites[0] << ": " << mShutdown.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Resolve error: " << mDeqSites[0] << ": " << mShutdown.message ();
 
             invokeComplete (mShutdown);
         }
         else
         {
-            JLOG (j_.trace) << "Resolve complete.";
+            WriteLog (lsTRACE, HTTPClient) << "Resolve complete.";
 
             boost::asio::async_connect (
                 mSocket.lowest_layer (),
@@ -291,20 +284,20 @@ public:
 
         if (mShutdown)
         {
-            JLOG (j_.trace) << "Connect error: " << mShutdown.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Connect error: " << mShutdown.message ();
         }
 
         if (!mShutdown)
         {
-            JLOG (j_.trace) << "Connected.";
+            WriteLog (lsTRACE, HTTPClient) << "Connected.";
 
-            if (httpClientSSLContext->sslVerify ())
+            if (getConfig ().SSL_VERIFY)
             {
                 mShutdown   = mSocket.verify (mDeqSites[0]);
 
                 if (mShutdown)
                 {
-                    JLOG (j_.trace) << "set_verify_callback: " << mDeqSites[0] << ": " << mShutdown.message ();
+                    WriteLog (lsTRACE, HTTPClient) << "set_verify_callback: " << mDeqSites[0] << ": " << mShutdown.message ();
                 }
             }
         }
@@ -335,13 +328,13 @@ public:
 
         if (mShutdown)
         {
-            JLOG (j_.trace) << "Handshake error:" << mShutdown.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Handshake error:" << mShutdown.message ();
 
             invokeComplete (mShutdown);
         }
         else
         {
-            JLOG (j_.trace) << "Session started.";
+            WriteLog (lsTRACE, HTTPClient) << "Session started.";
 
             mBuild (mRequest, mDeqSites[0]);
 
@@ -361,13 +354,13 @@ public:
 
         if (mShutdown)
         {
-            JLOG (j_.trace) << "Write error: " << mShutdown.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Write error: " << mShutdown.message ();
 
             invokeComplete (mShutdown);
         }
         else
         {
-            JLOG (j_.trace) << "Wrote.";
+            WriteLog (lsTRACE, HTTPClient) << "Wrote.";
 
             mSocket.async_read_until (
                 mHeader,
@@ -382,7 +375,7 @@ public:
     void handleHeader (const boost::system::error_code& ecResult, std::size_t bytes_transferred)
     {
         std::string     strHeader ((std::istreambuf_iterator<char> (&mHeader)), std::istreambuf_iterator<char> ());
-        JLOG (j_.trace) << "Header: \"" << strHeader << "\"";
+        WriteLog (lsTRACE, HTTPClient) << "Header: \"" << strHeader << "\"";
 
         static boost::regex reStatus ("\\`HTTP/1\\S+ (\\d{3}) .*\\'");          // HTTP/1.1 200 OK
         static boost::regex reSize ("\\`.*\\r\\nContent-Length:\\s+([0-9]+).*\\'");
@@ -395,7 +388,7 @@ public:
         if (!bMatch)
         {
             // XXX Use our own error code.
-            JLOG (j_.trace) << "No status code";
+            WriteLog (lsTRACE, HTTPClient) << "No status code";
             invokeComplete (boost::system::error_code (boost::system::errc::bad_address, boost::system::system_category ()));
             return;
         }
@@ -442,7 +435,7 @@ public:
 
         if (mShutdown && mShutdown != boost::asio::error::eof)
         {
-            JLOG (j_.trace) << "Read error: " << mShutdown.message ();
+            WriteLog (lsTRACE, HTTPClient) << "Read error: " << mShutdown.message ();
 
             invokeComplete (mShutdown);
         }
@@ -450,7 +443,7 @@ public:
         {
             if (mShutdown)
             {
-                JLOG (j_.trace) << "Complete.";
+                WriteLog (lsTRACE, HTTPClient) << "Complete.";
             }
             else
             {
@@ -470,10 +463,10 @@ public:
 
         if (ecCancel)
         {
-            JLOG (j_.trace) << "invokeComplete: Deadline cancel error: " << ecCancel.message ();
+            WriteLog (lsTRACE, HTTPClient) << "invokeComplete: Deadline cancel error: " << ecCancel.message ();
         }
 
-        JLOG (j_.debug) << "invokeComplete: Deadline popping: " << mDeqSites.size ();
+        WriteLog (lsDEBUG, HTTPClient) << "invokeComplete: Deadline popping: " << mDeqSites.size ();
 
         if (!mDeqSites.empty ())
         {
@@ -497,7 +490,7 @@ public:
     }
 
 private:
-    using pointer = std::shared_ptr<HTTPClient>;
+    typedef std::shared_ptr<HTTPClient> pointer;
 
     bool                                                        mSSL;
     AutoSocket                                                  mSocket;
@@ -520,7 +513,6 @@ private:
 
     std::deque<std::string>                                     mDeqSites;
     boost::posix_time::time_duration                            mTimeout;
-    beast::Journal                                              j_;
 };
 
 //------------------------------------------------------------------------------
@@ -534,11 +526,11 @@ void HTTPClient::get (
     std::size_t responseMax,
     boost::posix_time::time_duration timeout,
     std::function<bool (const boost::system::error_code& ecResult, int iStatus,
-        std::string const& strData)> complete,
-    Logs& l)
+        std::string const& strData)> complete)
 {
-    auto client = std::make_shared<HTTPClientImp> (
-        io_service, port, responseMax, l);
+    std::shared_ptr <HTTPClientImp> client (
+        new HTTPClientImp (io_service, port, responseMax));
+
     client->get (bSSL, deqSites, strPath, timeout, complete);
 }
 
@@ -551,13 +543,13 @@ void HTTPClient::get (
     std::size_t responseMax,
     boost::posix_time::time_duration timeout,
     std::function<bool (const boost::system::error_code& ecResult, int iStatus,
-        std::string const& strData)> complete,
-    Logs& l)
+        std::string const& strData)> complete)
 {
     std::deque<std::string> deqSites (1, strSite);
 
-    auto client = std::make_shared<HTTPClientImp> (
-        io_service, port, responseMax, l);
+    std::shared_ptr <HTTPClientImp> client (
+        new HTTPClientImp (io_service, port, responseMax));
+
     client->get (bSSL, deqSites, strPath, timeout, complete);
 }
 
@@ -570,13 +562,13 @@ void HTTPClient::request (
     std::size_t responseMax,
     boost::posix_time::time_duration timeout,
     std::function<bool (const boost::system::error_code& ecResult, int iStatus,
-        std::string const& strData)> complete,
-    Logs& l)
+        std::string const& strData)> complete)
 {
     std::deque<std::string> deqSites (1, strSite);
 
-    auto client = std::make_shared<HTTPClientImp> (
-        io_service, port, responseMax, l);
+    std::shared_ptr <HTTPClientImp> client (
+        new HTTPClientImp (io_service, port, responseMax));
+
     client->request (bSSL, deqSites, setRequest, timeout, complete);
 }
 

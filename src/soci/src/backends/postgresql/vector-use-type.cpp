@@ -6,9 +6,8 @@
 //
 
 #define SOCI_POSTGRESQL_SOURCE
-#include "soci/soci-platform.h"
-#include "soci/postgresql/soci-postgresql.h"
-#include "soci-dtocstr.h"
+#include <soci-platform.h>
+#include "soci-postgresql.h"
 #include "common.h"
 #include <libpq/libpq-fs.h> // libpq
 #include <cctype>
@@ -24,6 +23,10 @@
 #endif // SOCI_POSTGRESQL_NOBINDBYNAME
 #endif // SOCI_POSTGRESQL_NOPARAMS
 
+#ifdef _MSC_VER
+#pragma warning(disable:4355 4996)
+#define snprintf _snprintf
+#endif
 
 using namespace soci;
 using namespace soci::details;
@@ -134,14 +137,16 @@ void postgresql_vector_use_type_backend::pre_use(indicator const * ind)
                 break;
             case x_double:
                 {
+                    // no need to overengineer it (KISS)...
+
                     std::vector<double> * pv
                         = static_cast<std::vector<double> *>(data_);
                     std::vector<double> & v = *pv;
 
-                    std::string const s = double_to_cstring(v[i]);
+                    std::size_t const bufSize = 100;
+                    buf = new char[bufSize];
 
-                    buf = new char[s.size() + 1];
-                    std::strcpy(buf, s.c_str());
+                    snprintf(buf, bufSize, "%.20g", v[i]);
                 }
                 break;
             case x_stdtm:

@@ -34,15 +34,15 @@ namespace path {
 // This is the wrapper that restores a checkpointed version of the ledger so we
 // can write all over it without consequence.
 
-void PathCursor::nextIncrement () const
+void PathCursor::nextIncrement (LedgerEntrySet const& lesCheckpoint) const
 {
     // The next state is what is available in preference order.
     // This is calculated when referenced accounts changed.
     // VFALCO-FIXME this generates errors
-    // JLOG (j_.trace)
+    // WriteLog (lsTRACE, RippleCalc)
     //     << "nextIncrement: Path In: " << pathState_.getJson ();
 
-    auto status = liquidity();
+    auto status = liquidity(lesCheckpoint);
 
     if (status == tesSUCCESS)
     {
@@ -61,7 +61,7 @@ void PathCursor::nextIncrement () const
             pathState_.outPass(), pathState_.inPass()));
 
         // VFALCO-FIXME this generates errors
-        // JLOG (j_.trace)
+        // WriteLog (lsTRACE, RippleCalc)
         //     << "nextIncrement: Path after forward: " << pathState_.getJson ();
     }
     else

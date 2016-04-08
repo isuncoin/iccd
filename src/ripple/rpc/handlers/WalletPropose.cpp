@@ -18,13 +18,8 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/basics/strHex.h>
 #include <ripple/crypto/KeyType.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
 #include <ripple/protocol/RippleAddress.h>
-#include <ripple/rpc/Context.h>
 #include <ripple/rpc/handlers/WalletPropose.h>
 #include <ed25519-donna/ed25519.h>
 
@@ -101,7 +96,7 @@ Json::Value walletPropose (Json::Value const& params)
     obj[jss::master_seed] = naSeed.humanSeed ();
     obj[jss::master_seed_hex] = to_string (naSeed.getSeed ());
     obj[jss::master_key] = naSeed.humanSeed1751();
-    obj[jss::account_id] = toBase58(calcAccountID(naAccount));
+    obj[jss::account_id] = naAccount.humanAccountID ();
     obj[jss::public_key] = naAccount.humanAccountPublic();
     obj[jss::key_type] = to_string (type);
 

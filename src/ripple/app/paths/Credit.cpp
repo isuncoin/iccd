@@ -18,23 +18,22 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/ledger/ReadView.h>
+#include <ripple/app/book/Types.h>
 #include <ripple/protocol/STAmount.h>
 #include <ripple/protocol/Indexes.h>
 
 namespace ripple {
 
-STAmount
-creditLimit (
-    ReadView const& view,
-    AccountID const& account,
-    AccountID const& issuer,
+STAmount creditLimit (
+    LedgerEntrySet& ledger,
+    Account const& account,
+    Account const& issuer,
     Currency const& currency)
 {
     STAmount result ({currency, account});
 
-    auto sleRippleState = view.read(
-        keylet::line(account, issuer, currency));
+    auto sleRippleState = ledger.entryCache (ltRIPPLE_STATE,
+        getRippleStateIndex (account, issuer, currency));
 
     if (sleRippleState)
     {
@@ -49,15 +48,15 @@ creditLimit (
 }
 
 STAmount creditBalance (
-    ReadView const& view,
-    AccountID const& account,
-    AccountID const& issuer,
+    LedgerEntrySet& ledger,
+    Account const& account,
+    Account const& issuer,
     Currency const& currency)
 {
     STAmount result ({currency, account});
 
-    auto sleRippleState = view.read(
-        keylet::line(account, issuer, currency));
+    auto sleRippleState = ledger.entryCache (ltRIPPLE_STATE,
+        getRippleStateIndex (account, issuer, currency));
 
     if (sleRippleState)
     {

@@ -20,13 +20,13 @@
 #include <beast/asio/IPAddressConversion.h>
 #include <beast/asio/placeholders.h>
 #include <beast/intrusive/List.h>
+#include <beast/threads/SharedData.h>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/optional.hpp>
 #include <cassert>
 #include <climits>
 #include <deque>
 #include <functional>
-#include <mutex>
 #include <set>
 #include <sstream>
 #include <thread>
@@ -192,6 +192,13 @@ private:
         max_packet_size = 1472
     };
 
+    struct StateType
+    {
+        List <StatsDMetricBase> metrics;
+    };
+
+    typedef SharedData <StateType> State;
+
     Journal m_journal;
     IP::Endpoint m_address;
     std::string m_prefix;
@@ -201,8 +208,7 @@ private:
     boost::asio::deadline_timer m_timer;
     boost::asio::ip::udp::socket m_socket;
     std::deque <std::string> m_data;
-    std::recursive_mutex metricsLock_;
-    List <StatsDMetricBase> metrics_;
+    State m_state;
 
     // Must come last for order of init
     std::thread m_thread;
@@ -282,14 +288,14 @@ public:
 
     void add (StatsDMetricBase& metric)
     {
-        std::lock_guard<std::recursive_mutex> _(metricsLock_);
-        metrics_.push_back (metric);
+        State::Access state (m_state);
+        state->metrics.push_back (metric);
     }
 
     void remove (StatsDMetricBase& metric)
     {
-        std::lock_guard<std::recursive_mutex> _(metricsLock_);
-        metrics_.erase (metrics_.iterator_to (metric));
+        State::Access state (m_state);
+        state->metrics.erase (state->metrics.iterator_to (metric));
     }
 
     //--------------------------------------------------------------------------
@@ -419,10 +425,11 @@ public:
             return;
         }
 
-        std::lock_guard<std::recursive_mutex> _(metricsLock_);
+        State::Access state (m_state);
 
-        for (auto& m : metrics_)
-            m.do_process();
+        for (List <StatsDMetricBase>::iterator iter (state->metrics.begin());
+            iter != state->metrics.end(); ++iter)
+            iter->do_process();
 
         send_buffers ();
 
@@ -609,7 +616,7 @@ void StatsDGaugeImpl::flush ()
 void StatsDGaugeImpl::do_set (GaugeImpl::value_type value)
 {
     m_value = value;
-
+    
     if (m_value != m_last_value)
     {
         m_last_value = m_value;
@@ -634,7 +641,7 @@ void StatsDGaugeImpl::do_increment (GaugeImpl::difference_type amount)
     {
         GaugeImpl::value_type const d (
             static_cast <GaugeImpl::value_type> (-amount));
-        value = (d >= value) ? 0 : value - d;
+        value = (d >= value) ? 0 : value - d; 
     }
 
     do_set (value);

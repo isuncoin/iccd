@@ -20,7 +20,6 @@
 #ifndef RIPPLE_APP_LEDGER_TRANSACTIONSTATESF_H_INCLUDED
 #define RIPPLE_APP_LEDGER_TRANSACTIONSTATESF_H_INCLUDED
 
-#include <ripple/app/main/Application.h>
 #include <ripple/shamap/SHAMapSyncFilter.h>
 #include <cstdint>
 
@@ -28,15 +27,10 @@ namespace ripple {
 
 // This class is only needed on add functions
 // sync filter for transactions tree during ledger sync
-class TransactionStateSF
-    : public SHAMapSyncFilter
+class TransactionStateSF : public SHAMapSyncFilter
 {
-private:
-    Application& app_;
-
 public:
-    explicit
-    TransactionStateSF(Application& app);
+    TransactionStateSF();
 
     // Note that the nodeData is overwritten by this call
     void gotNode (bool fromFilter,

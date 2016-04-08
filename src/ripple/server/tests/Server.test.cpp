@@ -24,7 +24,6 @@
 #include <beast/unit_test/suite.h>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/optional.hpp>
-#include <boost/utility/in_place_factory.hpp>
 #include <chrono>
 #include <stdexcept>
 #include <thread>
@@ -137,7 +136,7 @@ public:
         }
 
         void
-        onStopped (Server& server) override
+        onStopped (Server& server)
         {
         }
     };
@@ -216,7 +215,7 @@ public:
     test_request()
     {
         boost::asio::io_service ios;
-        using socket = boost::asio::ip::tcp::socket;
+        typedef boost::asio::ip::tcp::socket socket;
         socket s (ios);
 
         if (! connect (s, "127.0.0.1", testPort))
@@ -248,7 +247,7 @@ public:
     test_keepalive()
     {
         boost::asio::io_service ios;
-        using socket = boost::asio::ip::tcp::socket;
+        typedef boost::asio::ip::tcp::socket socket;
         socket s (ios);
 
         if (! connect (s, "127.0.0.1", testPort))

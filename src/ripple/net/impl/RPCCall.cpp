@@ -18,7 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
 #include <ripple/net/RPCCall.h>
 #include <ripple/net/RPCErr.h>
 #include <ripple/basics/Log.h>
@@ -28,9 +27,7 @@
 #include <ripple/net/HTTPClient.h>
 #include <ripple/protocol/JsonFields.h>
 #include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/Feature.h>
 #include <ripple/protocol/SystemParameters.h>
-#include <ripple/protocol/types.h>
 #include <ripple/server/ServerHandler.h>
 #include <beast/module/core/text/LexicalCast.h>
 #include <boost/asio/streambuf.hpp>
@@ -81,8 +78,6 @@ std::string createHTTPPost (
 class RPCParser
 {
 private:
-    beast::Journal j_;
-
     // TODO New routine for parsing ledger parameters, other routines should standardize on this.
     static bool jvParseLedger (Json::Value& jvRequest, std::string const& strLedger)
     {
@@ -134,7 +129,7 @@ private:
     }
 
 private:
-    using parseFuncPtr = Json::Value (RPCParser::*) (Json::Value const& jvParams);
+    typedef Json::Value (RPCParser::*parseFuncPtr) (Json::Value const& jvParams);
 
     Json::Value parseAsIs (Json::Value const& jvParams)
     {
@@ -174,24 +169,21 @@ private:
     }
 
     // account_tx accountID [ledger_min [ledger_max [limit [offset]]]] [binary] [count] [descending]
-    Json::Value
-    parseAccountTransactions (Json::Value const& jvParams)
+    Json::Value parseAccountTransactions (Json::Value const& jvParams)
     {
         Json::Value     jvRequest (Json::objectValue);
+        RippleAddress   raAccount;
         unsigned int    iParams = jvParams.size ();
 
-        auto const account =
-            parseBase58<AccountID>(jvParams[0u].asString());
-        if (! account)
+        if (!raAccount.setAccountID (jvParams[0u].asString ()))
             return rpcError (rpcACT_MALFORMED);
 
-        jvRequest[jss::account]= toBase58(*account);
+        jvRequest[jss::account]    = raAccount.humanAccountID ();
 
         bool            bDone   = false;
 
         while (!bDone && iParams >= 2)
         {
-            // VFALCO Why is Json::StaticString appearing on the right side?
             if (jvParams[iParams - 1].asString () == jss::binary)
             {
                 jvRequest[jss::binary]     = true;
@@ -248,14 +240,13 @@ private:
     Json::Value parseTxAccount (Json::Value const& jvParams)
     {
         Json::Value     jvRequest (Json::objectValue);
+        RippleAddress   raAccount;
         unsigned int    iParams = jvParams.size ();
 
-        auto const account =
-            parseBase58<AccountID>(jvParams[0u].asString());
-        if (! account)
+        if (!raAccount.setAccountID (jvParams[0u].asString ()))
             return rpcError (rpcACT_MALFORMED);
 
-        jvRequest[jss::account]    = toBase58(*account);
+        jvRequest[jss::account]    = raAccount.humanAccountID ();
 
         bool            bDone   = false;
 
@@ -429,42 +420,14 @@ private:
         return jvRequest;
     }
 
-    // sign_for <account> <secret> <json> offline
-    // sign_for <account> <secret> <json>
-    Json::Value parseSignFor (Json::Value const& jvParams)
-    {
-        bool const bOffline = 4 == jvParams.size () && jvParams[3u].asString () == "offline";
-
-        if (3 == jvParams.size () || bOffline)
-        {
-            Json::Value txJSON;
-            Json::Reader reader;
-            if (reader.parse (jvParams[2u].asString (), txJSON))
-            {
-                // sign_for txJSON.
-                Json::Value jvRequest;
-
-                jvRequest[jss::account] = jvParams[0u].asString ();
-                jvRequest[jss::secret]  = jvParams[1u].asString ();
-                jvRequest[jss::tx_json] = txJSON;
-
-                if (bOffline)
-                    jvRequest[jss::offline] = true;
-
-                return jvRequest;
-            }
-        }
-        return rpcError (rpcINVALID_PARAMS);
-    }
-
     // json <command> <json>
     Json::Value parseJson (Json::Value const& jvParams)
     {
         Json::Reader    reader;
         Json::Value     jvRequest;
 
-        JLOG (j_.trace) << "RPC method: " << jvParams[0u];
-        JLOG (j_.trace) << "RPC json: " << jvParams[1u];
+        WriteLog (lsTRACE, RPCParser) << "RPC method: " << jvParams[0u];
+        WriteLog (lsTRACE, RPCParser) << "RPC json: " << jvParams[1u];
 
         if (reader.parse (jvParams[1u].asString (), jvRequest))
         {
@@ -506,7 +469,7 @@ private:
 
         std::string     strLedger   = jvParams[0u].asString ();
 
-        if (strLedger.length () == 64)
+        if (strLedger.length () == 32)
         {
             jvRequest[jss::ledger_hash]    = strLedger;
         }
@@ -576,11 +539,12 @@ private:
         if (bPeer && iCursor >= 2)
             strPeer = jvParams[iCursor].asString ();
 
+        int             iIndex      = 0;
+        //  int             iIndex      = jvParams.size() >= 2 ? beast::lexicalCast <int>(jvParams[1u].asString()) : 0;
+
         RippleAddress   raAddress;
 
-        if (! raAddress.setAccountPublic (strIdent) &&
-            ! parseBase58<AccountID>(strIdent) &&
-                ! raAddress.setSeedGeneric (strIdent))
+        if (!raAddress.setAccountPublic (strIdent) && !raAddress.setAccountID (strIdent) && !raAddress.setSeedGeneric (strIdent))
             return rpcError (rpcACT_MALFORMED);
 
         // Get info on account.
@@ -591,13 +555,14 @@ private:
         if (bStrict)
             jvRequest[jss::strict]     = 1;
 
+        if (iIndex)
+            jvRequest[jss::account_index]  = iIndex;
+
         if (!strPeer.empty ())
         {
             RippleAddress   raPeer;
 
-            if (! raPeer.setAccountPublic (strPeer) &&
-                ! parseBase58<AccountID>(strPeer) &&
-                    ! raPeer.setSeedGeneric (strPeer))
+            if (!raPeer.setAccountPublic (strPeer) && !raPeer.setAccountID (strPeer) && !raPeer.setSeedGeneric (strPeer))
                 return rpcError (rpcACT_MALFORMED);
 
             jvRequest["peer"]   = strPeer;
@@ -616,7 +581,7 @@ private:
         Json::Value     jvRequest;
         bool            bLedger     = 2 == jvParams.size ();
 
-        JLOG (j_.trace) << "RPC json: " << jvParams[0u];
+        WriteLog (lsTRACE, RPCParser) << "RPC json: " << jvParams[0u];
 
         if (reader.parse (jvParams[0u].asString (), jvRequest))
         {
@@ -640,7 +605,7 @@ private:
     {
         Json::Value     txJSON;
         Json::Reader    reader;
-        bool const      bOffline    = 3 == jvParams.size () && jvParams[2u].asString () == "offline";
+        bool            bOffline    = 3 == jvParams.size () && jvParams[2u].asString () == "offline";
 
         if (1 == jvParams.size ())
         {
@@ -665,26 +630,6 @@ private:
                 jvRequest[jss::offline]    = true;
 
             return jvRequest;
-        }
-
-        return rpcError (rpcINVALID_PARAMS);
-    }
-
-    // submit any multisigned transaction to the network
-    //
-    // submit_multisigned <json>
-    Json::Value parseSubmitMultiSigned (Json::Value const& jvParams)
-    {
-        if (1 == jvParams.size ())
-        {
-            Json::Value     txJSON;
-            Json::Reader    reader;
-            if (reader.parse (jvParams[0u].asString (), txJSON))
-            {
-                Json::Value jvRequest;
-                jvRequest[jss::tx_json] = txJSON;
-                return jvRequest;
-            }
         }
 
         return rpcError (rpcINVALID_PARAMS);
@@ -799,52 +744,8 @@ private:
         return jvRequest;
     }
 
-    // parse gateway balances
-    // gateway_balances [<ledger>] <issuer_account> [ <hotwallet> [ <hotwallet> ]]
-
-    Json::Value parseGatewayBalances (Json::Value const& jvParams)
-    {
-        unsigned int index = 0;
-        const unsigned int size = jvParams.size ();
-
-        Json::Value jvRequest;
-
-        std::string param = jvParams[index++].asString ();
-        if (param.empty ())
-            return RPC::make_param_error ("Invalid first parameter");
-
-        if (param[0] != 'r')
-        {
-            if (param.size() == 64)
-                jvRequest[jss::ledger_hash] = param;
-            else
-                jvRequest[jss::ledger_index] = param;
-
-            if (size <= index)
-                return RPC::make_param_error ("Invalid hotwallet");
-
-            param = jvParams[index++].asString ();
-        }
-
-        jvRequest[jss::account] = param;
-
-        if (index < size)
-        {
-            Json::Value& hotWallets =
-                (jvRequest["hotwallet"] = Json::arrayValue);
-            while (index < size)
-                hotWallets.append (jvParams[index++].asString ());
-        }
-
-        return jvRequest;
-    }
-
 public:
     //--------------------------------------------------------------------------
-
-    explicit
-    RPCParser (beast::Journal j)
-            :j_ (j){}
 
     static std::string EncodeBase64 (std::string const& s)
     {
@@ -878,8 +779,8 @@ public:
     {
         if (ShouldLog (lsTRACE, RPCParser))
         {
-            JLOG (j_.trace) << "RPC method:" << strMethod;
-            JLOG (j_.trace) << "RPC params:" << jvParams;
+            WriteLog (lsTRACE, RPCParser) << "RPC method:" << strMethod;
+            WriteLog (lsTRACE, RPCParser) << "RPC params:" << jvParams;
         }
 
         struct Command
@@ -911,7 +812,6 @@ public:
             {   "consensus_info",       &RPCParser::parseAsIs,                  0,  0   },
             {   "feature",              &RPCParser::parseFeature,               0,  2   },
             {   "fetch_info",           &RPCParser::parseFetchInfo,             0,  1   },
-            {   "gateway_balances",     &RPCParser::parseGatewayBalances  ,     1,  -1  },
             {   "get_counts",           &RPCParser::parseGetCounts,             0,  1   },
             {   "json",                 &RPCParser::parseJson,                  2,  2   },
             {   "ledger",               &RPCParser::parseLedger,                0,  2   },
@@ -931,9 +831,7 @@ public:
             {   "random",               &RPCParser::parseAsIs,                  0,  0   },
             {   "ripple_path_find",     &RPCParser::parseRipplePathFind,        1,  2   },
             {   "sign",                 &RPCParser::parseSignSubmit,            2,  3   },
-            {   "sign_for",             &RPCParser::parseSignFor,               3,  4   },
             {   "submit",               &RPCParser::parseSignSubmit,            1,  3   },
-            {   "submit_multisigned",   &RPCParser::parseSubmitMultiSigned,     1,  1   },
             {   "server_info",          &RPCParser::parseAsIs,                  0,  0   },
             {   "server_state",         &RPCParser::parseAsIs,                  0,  0   },
             {   "stop",                 &RPCParser::parseAsIs,                  0,  0   },
@@ -970,7 +868,7 @@ public:
                 if ((command.minParams >= 0 && count < command.minParams) ||
                     (command.maxParams >= 0 && count > command.maxParams))
                 {
-                    JLOG (j_.debug) <<
+                    WriteLog (lsDEBUG, RPCParser) <<
                         "Wrong number of parameters for " << command.name <<
                         " minimum=" << command.minParams <<
                         " maximum=" << command.maxParams <<
@@ -1023,7 +921,7 @@ struct RPCCallImp
     static bool onResponse (
         std::function<void (Json::Value const& jvInput)> callbackFuncP,
             const boost::system::error_code& ecResult, int iStatus,
-                std::string const& strData, beast::Journal j)
+                std::string const& strData)
     {
         if (callbackFuncP)
         {
@@ -1038,7 +936,7 @@ struct RPCCallImp
                 throw std::runtime_error ("no response from server");
 
             // Parse reply
-            JLOG (j.debug) << "RPC reply: " << strData << std::endl;
+            WriteLog (lsDEBUG, RPCParser) << "RPC reply: " << strData << std::endl;
 
             Json::Reader    reader;
             Json::Value     jvReply;
@@ -1046,7 +944,7 @@ struct RPCCallImp
             if (!reader.parse (strData, jvReply))
                 throw std::runtime_error ("couldn't parse reply from server");
 
-            if (!jvReply)
+            if (jvReply.isNull ())
                 throw std::runtime_error ("expected reply to have result, error and id properties");
 
             Json::Value     jvResult (Json::objectValue);
@@ -1062,9 +960,9 @@ struct RPCCallImp
     // Build the request.
     static void onRequest (std::string const& strMethod, Json::Value const& jvParams,
         const std::map<std::string, std::string>& mHeaders, std::string const& strPath,
-            boost::asio::streambuf& sb, std::string const& strHost, beast::Journal j)
+            boost::asio::streambuf& sb, std::string const& strHost)
     {
-        JLOG (j.debug) << "requestRPC: strPath='" << strPath << "'";
+        WriteLog (lsDEBUG, RPCParser) << "requestRPC: strPath='" << strPath << "'";
 
         std::ostream    osRequest (&sb);
         osRequest <<
@@ -1077,25 +975,19 @@ struct RPCCallImp
 };
 
 //------------------------------------------------------------------------------
-namespace RPCCall {
 
-int fromCommandLine (
-    Config const& config,
-    const std::vector<std::string>& vCmd,
-    Logs& logs)
+int RPCCall::fromCommandLine (const std::vector<std::string>& vCmd)
 {
-    if (vCmd.empty ())
-        return 1;      // 1 = print usage.
-
     Json::Value jvOutput;
     int         nRet = 0;
     Json::Value jvRequest (Json::objectValue);
 
-    auto rpcJ = logs.journal ("RPCParser");
     try
     {
-        RPCParser   rpParser (rpcJ);
+        RPCParser   rpParser;
         Json::Value jvRpcParams (Json::arrayValue);
+
+        if (vCmd.empty ()) return 1;                                            // 1 = print usage.
 
         for (int i = 1; i != vCmd.size (); i++)
             jvRpcParams.append (vCmd[i]);
@@ -1107,7 +999,7 @@ int fromCommandLine (
 
         jvRequest   = rpParser.parseCommand (vCmd[0], jvRpcParams, true);
 
-        JLOG (rpcJ.trace) << "RPC Request: " << jvRequest << std::endl;
+        WriteLog (lsTRACE, RPCParser) << "RPC Request: " << jvRequest << std::endl;
 
         if (jvRequest.isMember (jss::error))
         {
@@ -1120,7 +1012,7 @@ int fromCommandLine (
             try
             {
                 std::stringstream ss;
-                setup = setup_ServerHandler(config, ss);
+                setup = setup_ServerHandler(getConfig(), ss);
             }
             catch(...)
             {
@@ -1128,10 +1020,10 @@ int fromCommandLine (
                 // line client works without a config file
             }
 
-            if (config.rpc_ip)
-                setup.client.ip = config.rpc_ip->to_string();
-            if (config.rpc_port)
-                setup.client.port = *config.rpc_port;
+            if (getConfig().rpc_ip)
+                setup.client.ip = getConfig().rpc_ip->to_string();
+            if (getConfig().rpc_port)
+                setup.client.port = *getConfig().rpc_port;
 
             Json::Value jvParams (Json::arrayValue);
 
@@ -1156,8 +1048,6 @@ int fromCommandLine (
                         ? jvRequest["method"].asString () : vCmd[0],
                     jvParams,                               // Parsed, execute.
                     setup.client.secure != 0,                // Use SSL
-                    config.QUIET,
-                    logs,
                     std::bind (RPCCallImp::callRPCHandler, &jvOutput,
                                std::placeholders::_1));
                 isService.run(); // This blocks until there is no more outstanding async calls.
@@ -1220,17 +1110,16 @@ int fromCommandLine (
 
 //------------------------------------------------------------------------------
 
-void fromNetwork (
+void RPCCall::fromNetwork (
     boost::asio::io_service& io_service,
     std::string const& strIp, const int iPort,
     std::string const& strUsername, std::string const& strPassword,
     std::string const& strPath, std::string const& strMethod,
-    Json::Value const& jvParams, const bool bSSL, const bool quiet,
-    Logs& logs,
+    Json::Value const& jvParams, const bool bSSL,
     std::function<void (Json::Value const& jvInput)> callbackFuncP)
 {
     // Connect to localhost
-    if (!quiet)
+    if (!getConfig ().QUIET)
     {
         std::cerr << (bSSL ? "Securely connecting to " : "Connecting to ") <<
             strIp << ":" << iPort << std::endl;
@@ -1248,8 +1137,6 @@ void fromNetwork (
     const int RPC_REPLY_MAX_BYTES (256*1024*1024);
     const int RPC_NOTIFY_SECONDS (600);
 
-    auto j = logs.journal ("HTTPClient");
-
     HTTPClient::request (
         bSSL,
         io_service,
@@ -1260,15 +1147,12 @@ void fromNetwork (
             strMethod,
             jvParams,
             mapRequestHeaders,
-            strPath, std::placeholders::_1, std::placeholders::_2, j),
+            strPath, std::placeholders::_1, std::placeholders::_2),
         RPC_REPLY_MAX_BYTES,
         boost::posix_time::seconds (RPC_NOTIFY_SECONDS),
         std::bind (&RPCCallImp::onResponse, callbackFuncP,
                    std::placeholders::_1, std::placeholders::_2,
-                   std::placeholders::_3, j),
-        logs);
-}
-
+                   std::placeholders::_3));
 }
 
 } // ripple

@@ -42,7 +42,7 @@ namespace detail {
 class ErrorCategory
 {
 public:
-    using Map = std::unordered_map <error_code_i, ErrorInfo>;
+    using Map = std::unordered_map <error_code_i, ErrorInfo> ;
 
     ErrorCategory ()
         : m_unknown (rpcUNKNOWN, "unknown", "An unknown error code.")
@@ -77,7 +77,6 @@ public:
         add (rpcLGR_IDXS_INVALID,      "lgrIdxsInvalid",    "Ledger indexes invalid.");
         add (rpcLGR_IDX_MALFORMED,     "lgrIdxMalformed",   "Ledger index malformed.");
         add (rpcLGR_NOT_FOUND,         "lgrNotFound",       "Ledger not found.");
-        add (rpcLGR_NOT_VALIDATED,     "lgrNotValidated",   "Ledger not validated.");
         add (rpcLOAD_FAILED,           "loadFailed",        "Load failed");
         add (rpcMASTER_DISABLED,       "masterDisabled",    "Master key is disabled.");
         add (rpcNOT_ENABLED,           "notEnabled",        "Not enabled in configuration.");
@@ -99,7 +98,6 @@ public:
         add (rpcPORT_MALFORMED,        "portMalformed",     "Port is malformed.");
         add (rpcPUBLIC_MALFORMED,      "publicMalformed",   "Public key is malformed.");
         add (rpcQUALITY_MALFORMED,     "qualityMalformed",  "Quality malformed.");
-        add (rpcSIGN_FOR_MALFORMED,    "signForMalformed",  "Signing for account is malformed.");
         add (rpcSLOW_DOWN,             "slowDown",          "You are placing too much load on the server.");
         add (rpcSRC_ACT_MALFORMED,     "srcActMalformed",   "Source account is malformed.");
         add (rpcSRC_ACT_MISSING,       "srcActMissing",     "Source account not provided.");
@@ -171,14 +169,5 @@ bool contains_error (Json::Value const& json)
     return false;
 }
 
-} // RPC
-
-std::string rpcErrorString(Json::Value const& jv)
-{
-    assert(RPC::contains_error(jv));
-    return jv[jss::error].asString() +
-        jv[jss::error_message].asString();
 }
-
-} // ripple
-
+}

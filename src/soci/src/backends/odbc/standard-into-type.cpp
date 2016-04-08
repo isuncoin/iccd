@@ -6,10 +6,8 @@
 //
 
 #define SOCI_ODBC_SOURCE
-#include "soci/soci-platform.h"
-#include "soci/odbc/soci-odbc.h"
-#include "soci-exchange-cast.h"
-#include "soci-mktime.h"
+#include <soci-platform.h>
+#include "soci-odbc.h"
 #include <ctime>
 #include <stdio.h>  // sscanf()
 
@@ -24,6 +22,7 @@ void odbc_standard_into_type_backend::define_by_pos(
     position_ = position++;
 
     SQLUINTEGER size = 0;
+
     switch (type_)
     {
     case x_char:
@@ -36,7 +35,7 @@ void odbc_standard_into_type_backend::define_by_pos(
         odbcType_ = SQL_C_CHAR;
         // Patch: set to min between column size and 100MB (used ot be 32769)
         // Column size for text data type can be too large for buffer allocation
-        size = static_cast<SQLUINTEGER>(statement_.column_size(position_));
+        size = statement_.column_size(position_);
         size = size > odbc_max_buffer_length ? odbc_max_buffer_length : size;
         size++;
         buf_ = new char[size];
@@ -102,9 +101,8 @@ void odbc_standard_into_type_backend::define_by_pos(
         static_cast<SQLUSMALLINT>(odbcType_), data, size, &valueLen_);
     if (is_odbc_error(rc))
     {
-        std::ostringstream ss;
-        ss << "binding output column #" << position_;
-        throw odbc_soci_error(SQL_HANDLE_STMT, statement_.hstmt_, ss.str());
+        throw odbc_soci_error(SQL_HANDLE_STMT, statement_.hstmt_,
+                            "into type pre_fetch");
     }
 }
 
@@ -148,39 +146,46 @@ void odbc_standard_into_type_backend::post_fetch(
         // only std::string and std::tm need special handling
         if (type_ == x_char)
         {
-            exchange_type_cast<x_char>(data_) = buf_[0];
+            char *c = static_cast<char*>(data_);
+            *c = buf_[0];
         }
-        else if (type_ == x_stdstring)
+        if (type_ == x_stdstring)
         {
-            std::string& s = exchange_type_cast<x_stdstring>(data_);
-            s = buf_;
-            if (s.size() >= (odbc_max_buffer_length - 1))
+            std::string *s = static_cast<std::string *>(data_);
+            *s = buf_;
+            if (s->size() >= (odbc_max_buffer_length - 1))
             {
                 throw soci_error("Buffer size overflow; maybe got too large string");
             }
         }
         else if (type_ == x_stdtm)
         {
-            std::tm& t = exchange_type_cast<x_stdtm>(data_);
+            std::tm *t = static_cast<std::tm *>(data_);
 
             TIMESTAMP_STRUCT * ts = reinterpret_cast<TIMESTAMP_STRUCT*>(buf_);
+            t->tm_isdst = -1;
+            t->tm_year = ts->year - 1900;
+            t->tm_mon = ts->month - 1;
+            t->tm_mday = ts->day;
+            t->tm_hour = ts->hour;
+            t->tm_min = ts->minute;
+            t->tm_sec = ts->second;
 
-            details::mktime_from_ymdhms(t,
-                                        ts->year, ts->month, ts->day,
-                                        ts->hour, ts->minute, ts->second);
+            // normalize and compute the remaining fields
+            std::mktime(t);
         }
         else if (type_ == x_long_long && use_string_for_bigint())
         {
-          long long& ll = exchange_type_cast<x_long_long>(data_);
-          if (sscanf(buf_, "%" LL_FMT_FLAGS "d", &ll) != 1)
+          long long *ll = static_cast<long long *>(data_);
+          if (sscanf(buf_, "%" LL_FMT_FLAGS "d", ll) != 1)
           {
             throw soci_error("Failed to parse the returned 64-bit integer value");
           }
         }
         else if (type_ == x_unsigned_long_long && use_string_for_bigint())
         {
-          unsigned long long& ll = exchange_type_cast<x_unsigned_long_long>(data_);
-          if (sscanf(buf_, "%" LL_FMT_FLAGS "u", &ll) != 1)
+          unsigned long long *ll = static_cast<unsigned long long *>(data_);
+          if (sscanf(buf_, "%" LL_FMT_FLAGS "u", ll) != 1)
           {
             throw soci_error("Failed to parse the returned 64-bit integer value");
           }

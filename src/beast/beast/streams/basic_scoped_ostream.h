@@ -20,7 +20,7 @@
 #ifndef BEAST_STREAMS_BASIC_SCOPED_OSTREAM_H_INCLUDED
 #define BEAST_STREAMS_BASIC_SCOPED_OSTREAM_H_INCLUDED
 
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 #include <functional>
 #include <memory>
@@ -54,11 +54,11 @@ template <
 class basic_scoped_ostream
 {
 private:
-    using handler_t = std::function <void (
-        std::basic_string <CharT, Traits, Allocator> const&)>;
+    typedef std::function <void (
+        std::basic_string <CharT, Traits, Allocator> const&)> handler_t;
 
-    using stream_type = std::basic_ostringstream <
-        CharT, Traits, Allocator>;
+    typedef std::basic_ostringstream <
+        CharT, Traits, Allocator> stream_type;
 
     handler_t m_handler;
 
@@ -81,7 +81,7 @@ private:
 #endif
 
 public:
-    using string_type = std::basic_string <CharT, Traits>;
+    typedef std::basic_string <CharT, Traits> string_type;
 
     // Disallow copy since that would duplicate the output
     basic_scoped_ostream (basic_scoped_ostream const&) = delete;

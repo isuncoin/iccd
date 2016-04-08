@@ -18,17 +18,13 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/core/Job.h>
-#include <ripple/core/JobQueue.h>
-#include <ripple/rpc/impl/LegacyPathFind.h>
 #include <ripple/rpc/impl/Tuning.h>
-#include <ripple/core/LoadFeeTrack.h>
+#include <ripple/rpc/impl/LegacyPathFind.h>
 
 namespace ripple {
 namespace RPC {
 
-LegacyPathFind::LegacyPathFind (bool isAdmin, Application& app) : m_isOk (false)
+LegacyPathFind::LegacyPathFind (bool isAdmin) : m_isOk (false)
 {
     if (isAdmin)
     {
@@ -37,6 +33,7 @@ LegacyPathFind::LegacyPathFind (bool isAdmin, Application& app) : m_isOk (false)
         return;
     }
 
+    auto& app = getApp();
     auto const& jobCount = app.getJobQueue ().getJobCountGE (jtCLIENT);
     if (jobCount > Tuning::maxPathfindJobCount || app.getFeeTrack().isLoadedLocal ())
         return;

@@ -7,11 +7,11 @@
 //
 
 #define SOCI_MYSQL_SOURCE
-#include "soci/mysql/soci-mysql.h"
-#include "soci/soci-platform.h"
+#include "soci-mysql.h"
+#include <soci-platform.h>
 #include "common.h"
-#include "soci-exchange-cast.h"
 // std
+#include <cassert>
 #include <ciso646>
 #include <cstdlib>
 #include <cstring>
@@ -49,7 +49,7 @@ void mysql_standard_into_type_backend::post_fetch(
         // no need to do anything (fetch() will return false)
         return;
     }
-
+    
     if (gotData)
     {
         int pos = position_ - 1;
@@ -78,34 +78,56 @@ void mysql_standard_into_type_backend::post_fetch(
         switch (type_)
         {
         case x_char:
-            exchange_type_cast<x_char>(data_) = *buf;
+            {
+                char *dest = static_cast<char*>(data_);
+                *dest = *buf;
+            }
             break;
         case x_stdstring:
             {
-                std::string& dest = exchange_type_cast<x_stdstring>(data_);
+                std::string *dest = static_cast<std::string *>(data_);
                 unsigned long * lengths =
                     mysql_fetch_lengths(statement_.result_);
-                dest.assign(buf, lengths[pos]);
+                dest->assign(buf, lengths[pos]);
             }
             break;
         case x_short:
-            parse_num(buf, exchange_type_cast<x_short>(data_));
+            {
+                short *dest = static_cast<short*>(data_);
+                parse_num(buf, *dest);
+            }
             break;
         case x_integer:
-            parse_num(buf, exchange_type_cast<x_integer>(data_));
+            {
+                int *dest = static_cast<int*>(data_);
+                parse_num(buf, *dest);
+            }
             break;
         case x_long_long:
-            parse_num(buf, exchange_type_cast<x_long_long>(data_));
+            {
+                long long *dest = static_cast<long long *>(data_);
+                parse_num(buf, *dest);
+            }
             break;
         case x_unsigned_long_long:
-            parse_num(buf, exchange_type_cast<x_unsigned_long_long>(data_));
+            {
+                unsigned long long *dest =
+                    static_cast<unsigned long long*>(data_);
+                parse_num(buf, *dest);
+            }
             break;
         case x_double:
-            parse_num(buf, exchange_type_cast<x_double>(data_));
+            {
+                double *dest = static_cast<double*>(data_);
+                parse_num(buf, *dest);
+            }
             break;
         case x_stdtm:
-            // attempt to parse the string and convert to std::tm
-            parse_std_tm(buf, exchange_type_cast<x_stdtm>(data_));
+            {
+                // attempt to parse the string and convert to std::tm
+                std::tm *dest = static_cast<std::tm *>(data_);
+                parse_std_tm(buf, *dest);
+            }
             break;
         default:
             throw soci_error("Into element used with non-supported type.");

@@ -17,7 +17,6 @@
 */
 //==============================================================================
 
-#include <BeastConfig.h>
 #include <ripple/protocol/STAccount.h>
 #include <ripple/protocol/STAmount.h>
 #include <ripple/protocol/STArray.h>

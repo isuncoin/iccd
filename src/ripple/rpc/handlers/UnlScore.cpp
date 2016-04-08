@@ -19,21 +19,14 @@
 
 #include <BeastConfig.h>
 #include <beast/utility/make_lock.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/UniqueNodeList.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/Handler.h>
 
 namespace ripple {
 
 // unl_score
 Json::Value doUnlScore (RPC::Context& context)
 {
-    auto lock = beast::make_lock(context.app.getMasterMutex());
-    context.app.getUNL ().nodeScore ();
+    auto lock = beast::make_lock(getApp().getMasterMutex());
+    getApp().getUNL ().nodeScore ();
 
     return RPC::makeObjectValue ("scoring requested");
 }

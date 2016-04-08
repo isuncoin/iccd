@@ -19,14 +19,12 @@
 
 #include <BeastConfig.h>
 #include <ripple/app/ledger/LedgerToJson.h>
-#include <ripple/app/ledger/LedgerMaster.h>
 #include <ripple/app/main/Application.h>
-#include <ripple/app/misc/Transaction.h>
 #include <ripple/app/misc/impl/AccountTxPaging.h>
+#include <ripple/app/tx/Transaction.h>
 #include <ripple/protocol/Serializer.h>
-#include <ripple/protocol/types.h>
+#include <beast/cxx14/memory.h> // <memory>
 #include <boost/format.hpp>
-#include <memory>
 
 namespace ripple {
 
@@ -36,42 +34,39 @@ convertBlobsToTxResult (
     std::uint32_t ledger_index,
     std::string const& status,
     Blob const& rawTxn,
-    Blob const& rawMeta,
-    Application& app)
+    Blob const& rawMeta)
 {
-    SerialIter it (makeSlice(rawTxn));
-    auto txn = std::make_shared<STTx const> (it);
+    SerialIter it (rawTxn);
+    STTx::pointer txn = std::make_shared<STTx> (it);
     std::string reason;
 
-    auto tr = std::make_shared<Transaction> (txn, reason, app);
+    auto tr = std::make_shared<Transaction> (txn, Validate::NO, reason);
 
     tr->setStatus (Transaction::sqlTransactionStatus(status));
     tr->setLedger (ledger_index);
 
-    auto metaset = std::make_shared<TxMeta> (
-        tr->getID (), tr->getLedger (), rawMeta, app.journal ("TxMeta"));
-
-    to.emplace_back(std::move(tr), metaset);
+    to.emplace_back(std::make_pair(std::move(tr),
+        std::make_shared<TransactionMetaSet> (
+            tr->getID (), tr->getLedger (), rawMeta)));
 };
 
 void
-saveLedgerAsync (Application& app, std::uint32_t seq)
+saveLedgerAsync (std::uint32_t seq)
 {
-    Ledger::pointer ledger = app.getLedgerMaster().getLedgerBySeq(seq);
+    Ledger::pointer ledger = getApp().getOPs().getLedgerBySeq(seq);
     if (ledger)
-        pendSaveValidated(app, ledger, false, false);
+        ledger->pendSaveValidated(false, false);
 }
 
 void
 accountTxPage (
     DatabaseCon& connection,
-    AccountIDCache const& idCache,
     std::function<void (std::uint32_t)> const& onUnsavedLedger,
     std::function<void (std::uint32_t,
                         std::string const&,
                         Blob const&,
                         Blob const&)> const& onTransaction,
-    AccountID const& account,
+    RippleAddress const& account,
     std::int32_t minLedger,
     std::int32_t maxLedger,
     bool forward,
@@ -136,7 +131,7 @@ accountTxPage (
              ORDER BY AccountTransactions.LedgerSeq ASC,
              AccountTransactions.TxnSeq ASC
              LIMIT %u;)"))
-            % idCache.toBase58(account)
+            % account.humanAccountID()
             % minLedger
             % maxLedger
             % queryLimit);
@@ -153,7 +148,7 @@ accountTxPage (
             AccountTransactions.TxnSeq ASC
             LIMIT %u;
             )"))
-        % idCache.toBase58(account)
+        % account.humanAccountID()
         % (findLedger + 1)
         % maxLedger
         % findLedger
@@ -168,7 +163,7 @@ accountTxPage (
              ORDER BY AccountTransactions.LedgerSeq DESC,
              AccountTransactions.TxnSeq DESC
              LIMIT %u;)"))
-            % idCache.toBase58(account)
+            % account.humanAccountID()
             % minLedger
             % maxLedger
             % queryLimit);
@@ -183,7 +178,7 @@ accountTxPage (
              ORDER BY AccountTransactions.LedgerSeq DESC,
              AccountTransactions.TxnSeq DESC
              LIMIT %u;)"))
-            % idCache.toBase58(account)
+            % account.humanAccountID()
             % minLedger
             % (findLedger - 1)
             % findLedger

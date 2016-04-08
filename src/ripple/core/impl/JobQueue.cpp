@@ -22,10 +22,10 @@
 #include <ripple/core/JobTypes.h>
 #include <ripple/core/JobTypeInfo.h>
 #include <ripple/core/JobTypeData.h>
+#include <beast/cxx14/memory.h>
 #include <beast/chrono/chrono_util.h>
 #include <beast/module/core/thread/Workers.h>
 #include <chrono>
-#include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -37,19 +37,16 @@ class JobQueueImp
     , private beast::Workers::Callback
 {
 public:
-    using JobSet = std::set <Job>;
-    using JobDataMap = std::map <JobType, JobTypeData>;
-    using ScopedLock = std::lock_guard <std::mutex>;
-    using ThreadIdMap = std::map <std::thread::id, Job*>;
+    typedef std::set <Job> JobSet;
+    typedef std::map <JobType, JobTypeData> JobDataMap;
+    typedef std::lock_guard <std::mutex> ScopedLock;
 
     beast::Journal m_journal;
-    mutable std::mutex m_mutex;
+    std::mutex m_mutex;
     std::uint64_t m_lastJob;
     JobSet m_jobSet;
     JobDataMap m_jobData;
     JobTypeData m_invalidJobData;
-
-    ThreadIdMap m_threadIds;
 
     // The number of jobs currently in processTask()
     int m_processCount;
@@ -72,11 +69,11 @@ public:
 
     //--------------------------------------------------------------------------
     JobQueueImp (beast::insight::Collector::ptr const& collector,
-        Stoppable& parent, beast::Journal journal, Logs& logs)
+        Stoppable& parent, beast::Journal journal)
         : JobQueue ("JobQueue", parent)
         , m_journal (journal)
         , m_lastJob (0)
-        , m_invalidJobData (getJobTypes ().getInvalid (), collector, logs)
+        , m_invalidJobData (getJobTypes ().getInvalid (), collector)
         , m_processCount (0)
         , m_workers (*this, "JobQueue", 0)
         , m_cancelCallback (std::bind (&Stoppable::isStopping, this))
@@ -96,14 +93,14 @@ public:
                 // And create dynamic information for all jobs
                 auto const result (m_jobData.emplace (std::piecewise_construct,
                     std::forward_as_tuple (jt.type ()),
-                    std::forward_as_tuple (jt, m_collector, logs)));
+                    std::forward_as_tuple (jt, m_collector)));
                 assert (result.second == true);
                 (void) result.second;
             }
         }
     }
 
-    ~JobQueueImp () override
+    ~JobQueueImp ()
     {
         // Must unhook before destroying
         hook = beast::insight::Hook ();
@@ -115,8 +112,8 @@ public:
         job_count = m_jobSet.size ();
     }
 
-    void addJob (
-        JobType type, std::string const& name, JobFunction const& func) override
+    void addJob (JobType type, std::string const& name,
+        boost::function <void (Job&)> const& jobFunc)
     {
         assert (type != jtINVALID);
 
@@ -166,12 +163,12 @@ public:
 
             std::pair <std::set <Job>::iterator, bool> result (
                 m_jobSet.insert (Job (type, name, ++m_lastJob,
-                    data.load (), func, m_cancelCallback)));
+                    data.load (), jobFunc, m_cancelCallback)));
             queueJob (*result.first, lock);
         }
     }
 
-    int getJobCount (JobType t) const override
+    int getJobCount (JobType t)
     {
         ScopedLock lock (m_mutex);
 
@@ -182,7 +179,7 @@ public:
             : c->second.waiting;
     }
 
-    int getJobCountTotal (JobType t) const override
+    int getJobCountTotal (JobType t)
     {
         ScopedLock lock (m_mutex);
 
@@ -193,7 +190,7 @@ public:
             : (c->second.waiting + c->second.running);
     }
 
-    int getJobCountGE (JobType t) const override
+    int getJobCountGE (JobType t)
     {
         // return the number of jobs at this priority level or greater
         int ret = 0;
@@ -211,7 +208,7 @@ public:
 
     // shut down the job queue without completing pending jobs
     //
-    void shutdown () override
+    void shutdown ()
     {
         m_journal.info <<  "Job queue shutting down";
 
@@ -219,7 +216,7 @@ public:
     }
 
     // set the number of thread serving the job queue to precisely this number
-    void setThreadCount (int c, bool const standaloneMode) override
+    void setThreadCount (int c, bool const standaloneMode)
     {
         if (standaloneMode)
         {
@@ -237,8 +234,8 @@ public:
         m_workers.setNumberOfThreads (c);
     }
 
-    LoadEvent::pointer getLoadEvent (
-        JobType t, std::string const& name) override
+
+    LoadEvent::pointer getLoadEvent (JobType t, std::string const& name)
     {
         JobDataMap::iterator iter (m_jobData.find (t));
         assert (iter != m_jobData.end ());
@@ -250,28 +247,27 @@ public:
             std::ref (iter-> second.load ()), name, true);
     }
 
-    LoadEvent::autoptr getLoadEventAP (
-        JobType t, std::string const& name) override
+    LoadEvent::autoptr getLoadEventAP (JobType t, std::string const& name)
     {
         JobDataMap::iterator iter (m_jobData.find (t));
         assert (iter != m_jobData.end ());
 
         if (iter == m_jobData.end ())
-            return {};
+            return LoadEvent::autoptr ();
 
-        return std::make_unique<LoadEvent> (iter-> second.load (), name, true);
+        return LoadEvent::autoptr (
+            new LoadEvent (iter-> second.load (), name, true));
     }
 
     void addLoadEvents (JobType t,
-        int count, std::chrono::milliseconds elapsed) override
+        int count, std::chrono::milliseconds elapsed)
     {
         JobDataMap::iterator iter (m_jobData.find (t));
         assert (iter != m_jobData.end ());
         iter->second.load().addSamples (count, elapsed);
     }
 
-    // Cannot be const because LoadMonitor has no const methods.
-    bool isOverloaded () override
+    bool isOverloaded ()
     {
         int count = 0;
 
@@ -284,8 +280,7 @@ public:
         return count > 0;
     }
 
-    // Cannot be const because LoadMonitor has no const methods.
-    Json::Value getJson (int) override
+    Json::Value getJson (int)
     {
         Json::Value ret (Json::objectValue);
 
@@ -339,15 +334,6 @@ public:
         ret["job_types"] = priorities;
 
         return ret;
-    }
-
-    Job* getJobForThread (std::thread::id const& id) const override
-    {
-        auto tid = (id == std::thread::id()) ? std::this_thread::get_id() : id;
-
-        ScopedLock lock (m_mutex);
-        auto i = m_threadIds.find (tid);
-        return (i == m_threadIds.end()) ? nullptr : i->second;
     }
 
 private:
@@ -444,7 +430,7 @@ private:
     // Invariants:
     //  The calling thread owns the JobLock
     //
-    void getNextJob (Job& job)
+    void getNextJob (Job& job, ScopedLock const& lock)
     {
         assert (! m_jobSet.empty ());
 
@@ -473,8 +459,6 @@ private:
         job = *iter;
         m_jobSet.erase (iter);
 
-        m_threadIds[std::this_thread::get_id()] = &job;
-
         --data.waiting;
         ++data.running;
     }
@@ -494,7 +478,7 @@ private:
     // Invariants:
     //  <none>
     //
-    void finishJob (Job const& job)
+    void finishJob (Job const& job, ScopedLock const& lock)
     {
         JobType const type = job.getType ();
 
@@ -512,10 +496,6 @@ private:
             m_workers.addTask ();
         }
 
-        if (! m_threadIds.erase (std::this_thread::get_id()))
-        {
-            assert (false);
-        }
         --data.running;
     }
 
@@ -553,13 +533,13 @@ private:
     // Invariants:
     //  <none>
     //
-    void processTask () override
+    void processTask ()
     {
         Job job;
 
         {
             ScopedLock lock (m_mutex);
-            getNextJob (job);
+            getNextJob (job, lock);
             ++m_processCount;
         }
 
@@ -587,7 +567,7 @@ private:
 
         {
             ScopedLock lock (m_mutex);
-            finishJob (job);
+            finishJob (job, lock);
             --m_processCount;
             checkStopped (lock);
         }
@@ -624,7 +604,7 @@ private:
 
     //--------------------------------------------------------------------------
 
-    void onStop () override
+    void onStop ()
     {
         // VFALCO NOTE I wanted to remove all the jobs that are skippable
         //             but then the Workers count of tasks to process
@@ -635,7 +615,7 @@ private:
             ScopedLock lock (m_mutex);
 
             // Remove all jobs whose type is skipOnStop
-            using JobDataMap = hash_map <JobType, std::size_t>;
+            typedef hash_map <JobType, std::size_t> JobDataMap;
             JobDataMap counts;
             bool const report (m_journal.debug.active());
 
@@ -676,7 +656,7 @@ private:
         */
     }
 
-    void onChildrenStopped () override
+    void onChildrenStopped ()
     {
         ScopedLock lock (m_mutex);
 
@@ -695,9 +675,9 @@ JobQueue::JobQueue (char const* name, Stoppable& parent)
 
 std::unique_ptr <JobQueue> make_JobQueue (
     beast::insight::Collector::ptr const& collector,
-        beast::Stoppable& parent, beast::Journal journal, Logs& logs)
+        beast::Stoppable& parent, beast::Journal journal)
 {
-    return std::make_unique <JobQueueImp> (collector, parent, journal, logs);
+    return std::make_unique <JobQueueImp> (collector, parent, journal);
 }
 
 }

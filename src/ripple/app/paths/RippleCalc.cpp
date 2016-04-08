@@ -22,62 +22,58 @@
 #include <ripple/app/paths/RippleCalc.h>
 #include <ripple/app/paths/cursor/PathCursor.h>
 #include <ripple/basics/Log.h>
-#include <ripple/ledger/View.h>
 
 namespace ripple {
 namespace path {
 
 namespace {
 
-static
-TER
-deleteOffers (ApplyView& view,
-    OfferSet const& offers, beast::Journal j)
+TER deleteOffers (
+    LedgerEntrySet& activeLedger, OfferSet& offers)
 {
-    for (auto& e: offers)
-        if (TER r = offerDelete (view,
-                view.peek(keylet::offer(e)), j))
+    for (auto& o: offers)
+    {
+        if (TER r = activeLedger.offerDelete (o))
             return r;
+    }
     return tesSUCCESS;
 }
 
 } // namespace
 
 RippleCalc::Output RippleCalc::rippleCalculate (
-    PaymentSandbox& view,
+    LedgerEntrySet& activeLedger,
 
     // Compute paths using this ledger entry set.  Up to caller to actually
     // apply to ledger.
 
     // Issuer:
-    //      XRP: xrpAccount()
-    //  non-XRP: uSrcAccountID (for any issuer) or another account with
+    //      ICC: iccAccount()
+    //  non-ICC: uSrcAccountID (for any issuer) or another account with
     //           trust node.
     STAmount const& saMaxAmountReq,             // --> -1 = no limit.
 
     // Issuer:
-    //      XRP: xrpAccount()
-    //  non-XRP: uDstAccountID (for any issuer) or another account with
+    //      ICC: iccAccount()
+    //  non-ICC: uDstAccountID (for any issuer) or another account with
     //           trust node.
     STAmount const& saDstAmountReq,
 
-    AccountID const& uDstAccountID,
-    AccountID const& uSrcAccountID,
+    Account const& uDstAccountID,
+    Account const& uSrcAccountID,
 
     // A set of paths that are included in the transaction that we'll
     // explore for liquidity.
     STPathSet const& spsPaths,
-    Logs& l,
     Input const* const pInputs)
 {
     RippleCalc rc (
-        view,
+        activeLedger,
         saMaxAmountReq,
         saDstAmountReq,
         uDstAccountID,
         uSrcAccountID,
-        spsPaths,
-        l);
+        spsPaths);
     if (pInputs != nullptr)
     {
         rc.inputFlags = *pInputs;
@@ -96,7 +92,7 @@ RippleCalc::Output RippleCalc::rippleCalculate (
 bool RippleCalc::addPathState(STPath const& path, TER& resultCode)
 {
     auto pathState = std::make_shared<PathState> (
-        view, saDstAmountReq_, saMaxAmountReq_, j_);
+        saDstAmountReq_, saMaxAmountReq_);
 
     if (!pathState)
     {
@@ -105,6 +101,7 @@ bool RippleCalc::addPathState(STPath const& path, TER& resultCode)
     }
 
     pathState->expandPath (
+        mActiveLedger,
         path,
         uDstAccountID_,
         uSrcAccountID_);
@@ -117,7 +114,7 @@ bool RippleCalc::addPathState(STPath const& path, TER& resultCode)
 
     pathState->setIndex (pathStateList_.size ());
 
-    JLOG (j_.debug)
+    WriteLog (lsDEBUG, RippleCalc)
         << "rippleCalc: Build direct:"
         << " status: " << transToken (pathState->status());
 
@@ -147,7 +144,8 @@ bool RippleCalc::addPathState(STPath const& path, TER& resultCode)
 // <-- TER: Only returns tepPATH_PARTIAL if partialPaymentAllowed.
 TER RippleCalc::rippleCalculate ()
 {
-    JLOG (j_.trace)
+    assert (mActiveLedger.isValid ());
+    WriteLog (lsTRACE, RippleCalc)
         << "rippleCalc>"
         << " saMaxAmountReq_:" << saMaxAmountReq_
         << " saDstAmountReq_:" << saDstAmountReq_;
@@ -166,7 +164,7 @@ TER RippleCalc::rippleCalculate ()
     }
     else if (spsPaths_.empty ())
     {
-        JLOG (j_.debug)
+        WriteLog (lsDEBUG, RippleCalc)
             << "rippleCalc: Invalid transaction:"
             << "No paths and direct ripple not allowed.";
 
@@ -175,9 +173,9 @@ TER RippleCalc::rippleCalculate ()
 
     // Build a default path.  Use saDstAmountReq_ and saMaxAmountReq_ to imply
     // nodes.
-    // XXX Might also make a XRP bridge by default.
+    // XXX Might also make a ICC bridge by default.
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "rippleCalc: Paths in set: " << spsPaths_.size ();
 
     // Now expand the path state.
@@ -208,6 +206,7 @@ TER RippleCalc::rippleCalculate ()
     while (resultCode == temUNCERTAIN)
     {
         int iBest = -1;
+        LedgerEntrySet lesCheckpoint = mActiveLedger;
         int iDry = 0;
 
         // True, if ever computed multi-quality.
@@ -226,11 +225,11 @@ TER RippleCalc::rippleCalculate ()
                 pathState->reset (actualAmountIn_, actualAmountOut_);
 
                 // Error if done, output met.
-                PathCursor pc(*this, *pathState, multiQuality, j_);
-                pc.nextIncrement ();
+                PathCursor pc(*this, *pathState, multiQuality);
+                pc.nextIncrement (lesCheckpoint);
 
                 // Compute increment.
-                JLOG (j_.debug)
+                WriteLog (lsDEBUG, RippleCalc)
                     << "rippleCalc: AFTER:"
                     << " mIndex=" << pathState->index()
                     << " uQuality=" << pathState->quality()
@@ -247,7 +246,7 @@ TER RippleCalc::rippleCalculate ()
                     // Path is not dry, but moved no funds
                     // This should never happen. Consider the path dry
 
-                    JLOG (j_.warning)
+                    WriteLog (lsWARNING, RippleCalc)
                         << "rippelCalc: Non-dry path moves no funds";
 
                     assert (false);
@@ -277,7 +276,7 @@ TER RippleCalc::rippleCalculate ()
                                 *pathStateList_[iBest], *pathState)))
                         // Current is better than set.
                     {
-                        JLOG (j_.debug)
+                        WriteLog (lsDEBUG, RippleCalc)
                             << "rippleCalc: better:"
                             << " mIndex=" << pathState->index()
                             << " uQuality=" << pathState->quality()
@@ -285,6 +284,11 @@ TER RippleCalc::rippleCalculate ()
                             << amountFromRate (pathState->quality())
                             << " inPass()=" << pathState->inPass()
                             << " saOutPass=" << pathState->outPass();
+
+                        assert (mActiveLedger.isValid ());
+                        mActiveLedger.swapWith (pathState->ledgerEntries());
+                        // For the path, save ledger state.
+                        mActiveLedger.invalidate ();
 
                         iBest   = pathState->index ();
                     }
@@ -295,14 +299,14 @@ TER RippleCalc::rippleCalculate ()
         ++iPass;
         if (ShouldLog (lsDEBUG, RippleCalc))
         {
-            JLOG (j_.debug)
+            WriteLog (lsDEBUG, RippleCalc)
                 << "rippleCalc: Summary:"
                 << " Pass: " << iPass
                 << " Dry: " << iDry
                 << " Paths: " << pathStateList_.size ();
             for (auto pathState: pathStateList_)
             {
-                JLOG (j_.debug)
+                WriteLog (lsDEBUG, RippleCalc)
                     << "rippleCalc: "
                     << "Summary: " << pathState->index()
                     << " rate: "
@@ -317,7 +321,7 @@ TER RippleCalc::rippleCalculate ()
             // Apply best path.
             auto pathState = pathStateList_[iBest];
 
-            JLOG (j_.debug)
+            WriteLog (lsDEBUG, RippleCalc)
                 << "rippleCalc: best:"
                 << " uQuality="
                 << amountFromRate (pathState->quality())
@@ -331,13 +335,16 @@ TER RippleCalc::rippleCalculate ()
                 pathState->unfundedOffers().begin (),
                 pathState->unfundedOffers().end ());
 
-            // Apply best pass' view
-            pathState->view().apply(view);
+            // Record best pass' LedgerEntrySet to build off of and potentially
+            // return.
+            assert (pathState->ledgerEntries().isValid ());
+            mActiveLedger.swapWith (pathState->ledgerEntries());
+            pathState->ledgerEntries().invalidate ();
 
             actualAmountIn_ += pathState->inPass();
             actualAmountOut_ += pathState->outPass();
 
-            if (multiQuality)
+            if (pathState->allLiquidityConsumed() || multiQuality)
             {
                 ++iDry;
                 pathState->setQuality(0);
@@ -351,7 +358,7 @@ TER RippleCalc::rippleCalculate ()
             }
             else if (actualAmountOut_ > saDstAmountReq_)
             {
-                JLOG (j_.fatal)
+                WriteLog (lsFATAL, RippleCalc)
                     << "rippleCalc: TOO MUCH:"
                     << " actualAmountOut_:" << actualAmountOut_
                     << " saDstAmountReq_:" << saDstAmountReq_;
@@ -373,7 +380,7 @@ TER RippleCalc::rippleCalculate ()
                 {
                     // This payment is taking too many passes
 
-                    JLOG (j_.error)
+                    WriteLog (lsERROR, RippleCalc)
                        << "rippleCalc: pass limit";
 
                     resultCode = telFAILED_PROCESSING;
@@ -407,17 +414,19 @@ TER RippleCalc::rippleCalculate ()
         }
         else
         {
-            // Don't apply any payment increments
+            // We must restore the activeLedger from lesCheckpoint in the case
+            // when iBest is -1 and just before the result is set to tesSUCCESS.
+
+            mActiveLedger.swapWith (lesCheckpoint);
             resultCode   = tesSUCCESS;
         }
     }
 
     if (resultCode == tesSUCCESS)
     {
-        auto viewJ = logs_.journal ("View");
-        resultCode = deleteOffers(view, unfundedOffersFromBestPaths, viewJ);
+        resultCode = deleteOffers(mActiveLedger, unfundedOffersFromBestPaths);
         if (resultCode == tesSUCCESS)
-            resultCode = deleteOffers(view, permanentlyUnfundedOffers_, viewJ);
+            resultCode = deleteOffers(mActiveLedger, permanentlyUnfundedOffers_);
     }
 
     // If isOpenLedger, then ledger is not final, can vote no.

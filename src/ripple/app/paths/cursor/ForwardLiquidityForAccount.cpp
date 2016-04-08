@@ -18,9 +18,10 @@
 //==============================================================================
 
 #include <BeastConfig.h>
+#include <ripple/app/book/Quality.h>
 #include <ripple/app/paths/cursor/RippleLiquidity.h>
 #include <ripple/basics/Log.h>
-#include <ripple/protocol/Quality.h>
+#include <ripple/legacy/0.27/Emulate027.h>
 
 namespace ripple {
 namespace path {
@@ -36,33 +37,32 @@ namespace path {
 // Then, compute current node's output for next node.
 // - Current node: specify what to push through to next.
 // - Output to next node is computed as input minus quality or transfer fee.
-// - If next node is an offer and output is non-XRP then we are the issuer and
+// - If next node is an offer and output is non-ICC then we are the issuer and
 //   do not need to push funds.
-// - If next node is an offer and output is XRP then we need to deliver funds to
+// - If next node is an offer and output is ICC then we need to deliver funds to
 //   limbo.
 TER PathCursor::forwardLiquidityForAccount () const
 {
     TER resultCode   = tesSUCCESS;
     auto const lastNodeIndex       = pathState_.nodes().size () - 1;
-    auto viewJ = rippleCalc_.logs_.journal ("View");
 
     std::uint64_t uRateMax = 0;
 
-    AccountID const& previousAccountID =
+    Account const& previousAccountID =
             previousNode().isAccount() ? previousNode().account_ :
             node().account_;
     // Offers are always issue.
-    AccountID const& nextAccountID =
+    Account const& nextAccountID =
             nextNode().isAccount() ? nextNode().account_ : node().account_;
 
     std::uint32_t uQualityIn = nodeIndex_
-        ? quality_in (view(),
+        ? quality_in (ledger(),
             node().account_,
             previousAccountID,
             node().issue_.currency)
         : QUALITY_ONE;
     std::uint32_t  uQualityOut = (nodeIndex_ == lastNodeIndex)
-        ? quality_out (view(),
+        ? quality_out (ledger(),
             node().account_,
             nextAccountID,
             node().issue_.currency)
@@ -80,7 +80,7 @@ TER PathCursor::forwardLiquidityForAccount () const
     // For !previousNode().isAccount()
     auto saPrvDeliverAct = previousNode().saFwdDeliver.zeroed ();
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "forwardLiquidityForAccount> "
         << "nodeIndex_=" << nodeIndex_ << "/" << lastNodeIndex
         << " previousNode.saFwdRedeem:" << previousNode().saFwdRedeem
@@ -127,7 +127,7 @@ TER PathCursor::forwardLiquidityForAccount () const
 
             pathState_.setInPass (pathState_.inPass() + node().saFwdIssue);
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "forwardLiquidityForAccount: ^ --> "
                 << "ACCOUNT --> account :"
                 << " saInReq=" << pathState_.inReq()
@@ -140,7 +140,7 @@ TER PathCursor::forwardLiquidityForAccount () const
         else if (nodeIndex_ == lastNodeIndex)
         {
             // account --> ACCOUNT --> $
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "forwardLiquidityForAccount: account --> "
                 << "ACCOUNT --> $ :"
                 << " previousAccountID="
@@ -157,7 +157,7 @@ TER PathCursor::forwardLiquidityForAccount () const
                     ? previousNode().saFwdIssue  // No fee.
                     : mulRound (
                           previousNode().saFwdIssue,
-                          amountFromRate (uQualityIn),
+                          STAmount (noIssue(), uQualityIn, -9),
                           previousNode().saFwdIssue.issue (),
                           true); // Amount to credit.
 
@@ -167,11 +167,11 @@ TER PathCursor::forwardLiquidityForAccount () const
             if (saCurReceive)
             {
                 // Actually receive.
-                resultCode = rippleCredit(view(),
+                resultCode = ledger().rippleCredit (
                     previousAccountID,
                     node().account_,
                     previousNode().saFwdRedeem + previousNode().saFwdIssue,
-                    false, viewJ);
+                    false);
             }
             else
             {
@@ -182,7 +182,7 @@ TER PathCursor::forwardLiquidityForAccount () const
         else
         {
             // account --> ACCOUNT --> account
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "forwardLiquidityForAccount: account --> "
                 << "ACCOUNT --> account";
 
@@ -235,7 +235,7 @@ TER PathCursor::forwardLiquidityForAccount () const
                 rippleLiquidity (
                     rippleCalc_,
                     QUALITY_ONE,
-                    rippleTransferRate (view(), node().account_),
+                    rippleTransferRate (ledger(), node().account_),
                     previousNode().saFwdRedeem,
                     node().saRevIssue,
                     saPrvRedeemAct,
@@ -267,11 +267,11 @@ TER PathCursor::forwardLiquidityForAccount () const
 
             // Adjust prv --> cur balance : take all inbound
             resultCode = saProvide
-                ? rippleCredit(view(),
+                ? ledger().rippleCredit (
                     previousAccountID,
                     node().account_,
                     previousNode().saFwdRedeem + previousNode().saFwdIssue,
-                    false, viewJ)
+                    false)
                 : tecPATH_DRY;
         }
     }
@@ -285,8 +285,8 @@ TER PathCursor::forwardLiquidityForAccount () const
 
         if (nodeIndex_)
         {
-            // Non-XRP, current node is the issuer.
-            JLOG (j_.trace)
+            // Non-ICC, current node is the issuer.
+            WriteLog (lsTRACE, RippleCalc)
                 << "forwardLiquidityForAccount: account --> "
                 << "ACCOUNT --> offer";
 
@@ -304,7 +304,7 @@ TER PathCursor::forwardLiquidityForAccount () const
                 rippleLiquidity (
                     rippleCalc_,
                     QUALITY_ONE,
-                    rippleTransferRate (view(), node().account_),
+                    rippleTransferRate (ledger(), node().account_),
                     previousNode().saFwdRedeem,
                     node().saRevDeliver,
                     saPrvRedeemAct,
@@ -332,10 +332,10 @@ TER PathCursor::forwardLiquidityForAccount () const
 
             // Adjust prv --> cur balance : take all inbound
             resultCode   = node().saFwdDeliver
-                ? rippleCredit(view(),
+                ? ledger().rippleCredit (
                     previousAccountID, node().account_,
                     previousNode().saFwdRedeem + previousNode().saFwdIssue,
-                    false, viewJ)
+                    false)
                 : tecPATH_DRY;  // Didn't actually deliver anything.
         }
         else
@@ -350,15 +350,15 @@ TER PathCursor::forwardLiquidityForAccount () const
                 node().saFwdDeliver = std::min (
                     node().saFwdDeliver, pathState_.inReq() - pathState_.inAct());
 
-                // Limit XRP by available. No limit for non-XRP as issuer.
-                if (isXRP (node().issue_))
+                // Limit ICC by available. No limit for non-ICC as issuer.
+                if (isICC (node().issue_))
                     node().saFwdDeliver = std::min (
                         node().saFwdDeliver,
-                        accountHolds(view(),
+                        ledger().accountHolds (
                             node().account_,
-                            xrpCurrency(),
-                            xrpAccount(),
-                            fhIGNORE_FREEZE, viewJ)); // XRP can't be frozen
+                            iccCurrency(),
+                            iccAccount(),
+                            fhIGNORE_FREEZE)); // ICC can't be frozen
 
             }
 
@@ -369,15 +369,15 @@ TER PathCursor::forwardLiquidityForAccount () const
             {
                 resultCode   = tecPATH_DRY;
             }
-            else if (!isXRP (node().issue_))
+            else if (!isICC (node().issue_))
             {
-                // Non-XRP, current node is the issuer.
+                // Non-ICC, current node is the issuer.
                 // We could be delivering to multiple accounts, so we don't know
                 // which ripple balance will be adjusted.  Assume just issuing.
 
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "forwardLiquidityForAccount: ^ --> "
-                    << "ACCOUNT -- !XRP --> offer";
+                    << "ACCOUNT -- !ICC --> offer";
 
                 // As the issuer, would only issue.
                 // Don't need to actually deliver. As from delivering leave in
@@ -385,13 +385,13 @@ TER PathCursor::forwardLiquidityForAccount () const
             }
             else
             {
-                JLOG (j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "forwardLiquidityForAccount: ^ --> "
-                    << "ACCOUNT -- XRP --> offer";
+                    << "ACCOUNT -- ICC --> offer";
 
-                // Deliver XRP to limbo.
-                resultCode = accountSend(view(),
-                    node().account_, xrpAccount(), node().saFwdDeliver, viewJ);
+                // Deliver ICC to limbo.
+                resultCode = ledger().accountSend (
+                    node().account_, iccAccount(), node().saFwdDeliver);
             }
         }
     }
@@ -400,7 +400,7 @@ TER PathCursor::forwardLiquidityForAccount () const
         if (nodeIndex_ == lastNodeIndex)
         {
             // offer --> ACCOUNT --> $
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "forwardLiquidityForAccount: offer --> "
                 << "ACCOUNT --> $ : "
                 << previousNode().saFwdDeliver;
@@ -414,7 +414,7 @@ TER PathCursor::forwardLiquidityForAccount () const
         else
         {
             // offer --> ACCOUNT --> account
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "forwardLiquidityForAccount: offer --> "
                 << "ACCOUNT --> account";
 
@@ -450,7 +450,7 @@ TER PathCursor::forwardLiquidityForAccount () const
                 rippleLiquidity (
                     rippleCalc_,
                     QUALITY_ONE,
-                    rippleTransferRate (view(), node().account_),
+                    rippleTransferRate (ledger(), node().account_),
                     previousNode().saFwdDeliver,
                     node().saRevIssue,
                     saPrvDeliverAct,
@@ -470,18 +470,25 @@ TER PathCursor::forwardLiquidityForAccount () const
     {
         // offer --> ACCOUNT --> offer
         // deliver/redeem -> deliver/issue.
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "forwardLiquidityForAccount: offer --> ACCOUNT --> offer";
 
         node().saFwdDeliver.clear (node().saRevDeliver);
 
-        if (previousNode().saFwdDeliver && node().saRevDeliver)
+        bool do_liquidity;
+
+        if (ripple::legacy::emulate027 (rippleCalc_.mActiveLedger.getLedger ()))
+            do_liquidity = previousNode().saFwdDeliver && node().saRevIssue;
+        else
+            do_liquidity = previousNode().saFwdDeliver && node().saRevDeliver;
+
+        if (do_liquidity)
         {
             // Rate : 1.0 : transfer_rate
             rippleLiquidity (
                 rippleCalc_,
                 QUALITY_ONE,
-                rippleTransferRate (view(), node().account_),
+                rippleTransferRate (ledger(), node().account_),
                 previousNode().saFwdDeliver,
                 node().saRevDeliver,
                 saPrvDeliverAct,

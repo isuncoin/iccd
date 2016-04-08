@@ -25,7 +25,7 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/streambuf.hpp>
 #include <boost/optional.hpp>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 #include <string>
 
 namespace beast {
@@ -35,13 +35,13 @@ namespace http {
 class body
 {
 private:
-    using buffer_type = boost::asio::streambuf;
+    typedef boost::asio::streambuf buffer_type;
 
     // Hack: use unique_ptr because streambuf cant be moved
     std::unique_ptr <buffer_type> buf_;
 
 public:
-    using const_buffers_type = buffer_type::const_buffers_type;
+    typedef buffer_type::const_buffers_type const_buffers_type;
 
     body();
     body (body&& other);

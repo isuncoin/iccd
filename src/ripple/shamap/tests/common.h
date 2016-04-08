@@ -21,7 +21,6 @@
 #define RIPPLE_SHAMAP_TESTS_COMMON_H_INCLUDED
 
 #include <BeastConfig.h>
-#include <ripple/basics/chrono.h>
 #include <ripple/shamap/Family.h>
 #include <ripple/shamap/FullBelowCache.h>
 #include <ripple/shamap/TreeNodeCache.h>
@@ -33,19 +32,21 @@
 #include <beast/chrono/manual_clock.h>
 
 namespace ripple {
+namespace shamap {
 namespace tests {
 
-class TestFamily : public Family
+class TestFamily : public shamap::Family
 {
 private:
-    TestStopwatch clock_;
+    beast::manual_clock <
+        std::chrono::steady_clock> clock_;
     NodeStore::DummyScheduler scheduler_;
     TreeNodeCache treecache_;
     FullBelowCache fullbelow_;
     std::unique_ptr<NodeStore::Database> db_;
-    beast::Journal j_;
 
 public:
+    explicit
     TestFamily (beast::Journal j)
         : treecache_ ("TreeNodeCache", 65536, 60, clock_, j)
         , fullbelow_ ("full_below", clock_)
@@ -61,12 +62,6 @@ public:
     clock()
     {
         return clock_;
-    }
-
-    beast::Journal const&
-    journal() override
-    {
-        return j_;
     }
 
     FullBelowCache&
@@ -110,15 +105,10 @@ public:
     {
         throw std::runtime_error("missing node");
     }
-
-    void
-    missing_node (uint256 const& refHash) override
-    {
-        throw std::runtime_error("missing node");
-    }
 };
 
 } // tests
+} // shamap
 } // ripple
 
 #endif

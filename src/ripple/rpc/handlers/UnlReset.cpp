@@ -18,21 +18,14 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/UniqueNodeList.h>
-#include <ripple/rpc/impl/Handler.h>
 #include <beast/utility/make_lock.h>
 
 namespace ripple {
 
-namespace RPC {
-struct Context;
-}
-
 Json::Value doUnlReset (RPC::Context& context)
 {
-    auto lock = beast::make_lock(context.app.getMasterMutex());
-    context.app.getUNL ().nodeReset ();
+    auto lock = beast::make_lock(getApp().getMasterMutex());
+    getApp().getUNL ().nodeReset ();
 
     return RPC::makeObjectValue ("removing nodes");
 }
