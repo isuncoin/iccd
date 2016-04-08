@@ -20,20 +20,39 @@
 #include <BeastConfig.h>
 #include <ripple/app/ledger/AcceptedLedger.h>
 #include <ripple/basics/Log.h>
-#include <ripple/basics/chrono.h>
+#include <ripple/basics/seconds_clock.h>
 
 namespace ripple {
 
-AcceptedLedger::AcceptedLedger (
-    std::shared_ptr<ReadView const> const& ledger,
-    AccountIDCache const& accountCache, Logs& logs)
-    : mLedger (ledger)
+// VFALCO TODO Remove this global and make it a member of the App
+//             Use a dependency injection to give AcceptedLedger access.
+//
+TaggedCache <uint256, AcceptedLedger> AcceptedLedger::s_cache (
+    "AcceptedLedger", 4, 60, get_seconds_clock (),
+        deprecatedLogs().journal("TaggedCache"));
+
+AcceptedLedger::AcceptedLedger (Ledger::ref ledger) : mLedger (ledger)
 {
-    for (auto const& item : ledger->txs)
+    SHAMap& txSet = *ledger->peekTransactionMap ();
+
+    for (std::shared_ptr<SHAMapItem> item = txSet.peekFirstItem (); item;
+         item = txSet.peekNextItem (item->getTag ()))
     {
-        insert (std::make_shared<AcceptedLedgerTx>(
-            ledger, item.first, item.second, accountCache, logs));
+        SerialIter sit (item->peekSerializer ());
+        insert (std::make_shared<AcceptedLedgerTx> (ledger, std::ref (sit)));
     }
+}
+
+AcceptedLedger::pointer AcceptedLedger::makeAcceptedLedger (Ledger::ref ledger)
+{
+    AcceptedLedger::pointer ret = s_cache.fetch (ledger->getHash ());
+
+    if (ret)
+        return ret;
+
+    ret = AcceptedLedger::pointer (new AcceptedLedger (ledger));
+    s_cache.canonicalize (ledger->getHash (), ret);
+    return ret;
 }
 
 void AcceptedLedger::insert (AcceptedLedgerTx::ref at)

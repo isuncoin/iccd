@@ -20,7 +20,6 @@
 #include <BeastConfig.h>
 #include <ripple/app/paths/cursor/PathCursor.h>
 #include <ripple/basics/Log.h>
-#include <ripple/ledger/View.h>
 #include <tuple>
 
 namespace ripple {
@@ -57,15 +56,15 @@ TER PathCursor::reverseLiquidity () const
 
     // node.transferRate_ caches the output transfer rate for this node.
     node().transferRate_ = amountFromRate (
-        rippleTransferRate (view(), node().issue_.account));
+        rippleTransferRate (ledger(), node().issue_.account));
 
     if (node().isAccount ())
         return reverseLiquidityForAccount ();
 
     // Otherwise the node is an Offer.
-    if (isXRP (nextNode().account_))
+    if (isICC (nextNode().account_))
     {
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "reverseLiquidityForOffer: "
             << "OFFER --> offer: nodeIndex_=" << nodeIndex_;
         return tesSUCCESS;
@@ -78,7 +77,7 @@ TER PathCursor::reverseLiquidity () const
     // Next is an account node, resolve current offer node's deliver.
     STAmount saDeliverAct;
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "reverseLiquidityForOffer: OFFER --> account:"
         << " nodeIndex_=" << nodeIndex_
         << " saRevDeliver=" << node().saRevDeliver;

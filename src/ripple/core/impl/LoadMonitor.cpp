@@ -45,7 +45,7 @@ LoadMonitor::Stats::Stats()
 
 //------------------------------------------------------------------------------
 
-LoadMonitor::LoadMonitor (beast::Journal j)
+LoadMonitor::LoadMonitor ()
     : mCounts (0)
     , mLatencyEvents (0)
     , mLatencyMSAvg (0)
@@ -53,7 +53,6 @@ LoadMonitor::LoadMonitor (beast::Journal j)
     , mTargetLatencyAvg (0)
     , mTargetLatencyPk (0)
     , mLastUpdate (UptimeTimer::getInstance ().getElapsedSeconds ())
-    , j_ (j)
 {
 }
 
@@ -147,8 +146,7 @@ void LoadMonitor::addLoadSample (LoadEvent const& sample)
 
     if (latency.inSeconds() > 0.5)
     {
-        auto& mj = latency.inSeconds() > 1.0 ? j_.warning : j_.info;
-        JLOG (mj)
+        WriteLog ((latency.inSeconds() > 1.0) ? lsWARNING : lsINFO, LoadMonitor)
             << "Job: " << name << " ExecutionTime: " << printElapsed (sample.getSecondsRunning()) <<
             " WaitingTime: " << printElapsed (sample.getSecondsWaiting());
     }

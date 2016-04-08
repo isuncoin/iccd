@@ -29,74 +29,159 @@
 namespace ripple {
 
 /** A currency issued by an account.
-    @see Currency, AccountID, Issue, Book
+
+    When ByValue is `false`, this only stores references, and the caller
+    is responsible for managing object lifetime.
+
+    @see Currency, Account, Issue, IssueRef, Book
 */
-class Issue
+template <bool ByValue>
+class IssueType
 {
 public:
-    Currency currency;
-    AccountID account;
+    typedef typename
+    std::conditional <ByValue, Currency, Currency const&>::type
+    IssueCurrency;
 
-    Issue ()
+    typedef typename
+    std::conditional <ByValue, Account, Account const&>::type
+    IssueAccount;
+
+    IssueCurrency currency;
+    IssueAccount account;
+
+    IssueType ()
     {
     }
 
-    Issue (Currency const& c, AccountID const& a)
+    IssueType (Currency const& c, Account const& a)
             : currency (c), account (a)
     {
     }
+
+    template <bool OtherByValue>
+    IssueType (IssueType <OtherByValue> const& other)
+        : currency (other.currency)
+        , account (other.account)
+    {
+    }
+
+    /** Assignment. */
+    template <bool MaybeByValue = ByValue, bool OtherByValue>
+    std::enable_if_t <MaybeByValue, IssueType&>
+    operator= (IssueType <OtherByValue> const& other)
+    {
+        currency = other.currency;
+        account = other.account;
+        return *this;
+    }
 };
 
-bool
-isConsistent (Issue const& ac);
+template <bool ByValue>
+bool isConsistent(IssueType<ByValue> const& ac)
+{
+    return isICC (ac.currency) == isICC (ac.account);
+}
 
-std::string
-to_string (Issue const& ac);
+template <bool ByValue>
+std::string to_string (IssueType<ByValue> const& ac)
+{
+    if (isICC (ac.account))
+        return to_string (ac.currency);
 
-std::ostream&
-operator<< (std::ostream& os, Issue const& x);
+    return to_string(ac.account) + "/" + to_string(ac.currency);
+}
 
-template <class Hasher>
-void
-hash_append(Hasher& h, Issue const& r)
+template <bool ByValue>
+std::ostream& operator<< (
+    std::ostream& os, IssueType<ByValue> const& x)
+{
+    os << to_string (x);
+    return os;
+}
+
+template <bool ByValue, class Hasher>
+void hash_append (Hasher& h, IssueType<ByValue> const& r)
 {
     using beast::hash_append;
-    hash_append(h, r.currency, r.account);
+    hash_append (h, r.currency, r.account);
 }
 
 /** Ordered comparison.
     The assets are ordered first by currency and then by account,
-    if the currency is not XRP.
+    if the currency is not ICC.
 */
-int
-compare (Issue const& lhs, Issue const& rhs);
+template <bool LhsByValue, bool RhsByValue>
+int compare (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    int diff = compare (lhs.currency, rhs.currency);
+    if (diff != 0)
+        return diff;
+    if (isICC (lhs.currency))
+        return 0;
+    return compare (lhs.account, rhs.account);
+}
 
 /** Equality comparison. */
 /** @{ */
-bool
-operator== (Issue const& lhs, Issue const& rhs);
-bool
-operator!= (Issue const& lhs, Issue const& rhs);
+template <bool LhsByValue, bool RhsByValue>
+bool operator== (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    return compare (lhs, rhs) == 0;
+}
+
+template <bool LhsByValue, bool RhsByValue>
+bool operator!= (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    return ! (lhs == rhs);
+}
 /** @} */
 
 /** Strict weak ordering. */
 /** @{ */
-bool
-operator< (Issue const& lhs, Issue const& rhs);
-bool
-operator> (Issue const& lhs, Issue const& rhs);
-bool
-operator>= (Issue const& lhs, Issue const& rhs);
-bool
-operator<= (Issue const& lhs, Issue const& rhs);
+template <bool LhsByValue, bool RhsByValue>
+bool operator< (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    return compare (lhs, rhs) < 0;
+}
+
+template <bool LhsByValue, bool RhsByValue>
+bool operator> (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    return rhs < lhs;
+}
+
+template <bool LhsByValue, bool RhsByValue>
+bool operator>= (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    return ! (lhs < rhs);
+}
+
+template <bool LhsByValue, bool RhsByValue>
+bool operator<= (IssueType <LhsByValue> const& lhs,
+    IssueType <RhsByValue> const& rhs)
+{
+    return ! (rhs < lhs);
+}
 /** @} */
 
 //------------------------------------------------------------------------------
 
-/** Returns an asset specifier that represents XRP. */
-inline Issue const& xrpIssue ()
+typedef IssueType <true> Issue;
+typedef IssueType <false> IssueRef;
+
+//------------------------------------------------------------------------------
+
+/** Returns an asset specifier that represents ICC. */
+inline Issue const& iccIssue ()
 {
-    static Issue issue {xrpCurrency(), xrpAccount()};
+    static Issue issue {iccCurrency(), iccAccount()};
     return issue;
 }
 

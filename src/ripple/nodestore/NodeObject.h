@@ -32,16 +32,16 @@ enum NodeObjectType
 {
     hotUNKNOWN = 0,
     hotLEDGER = 1,
-    //hotTRANSACTION = 2        // Not used
+    hotTRANSACTION = 2,
     hotACCOUNT_NODE = 3,
     hotTRANSACTION_NODE = 4
 };
 
 /** A simple object that the Ledger uses to store entries.
     NodeObjects are comprised of a type, a hash, a ledger index and a blob.
-    They can be uniquely identified by the hash, which is a half-SHA512 of
-    the blob. The blob is a variable length block of serialized data. The
-    type identifies what the blob contains.
+    They can be uniquely identified by the hash, which is a SHA 256 of the
+    blob. The blob is a variable length block of serialized data. The type
+    identifies what the blob contains.
 
     @note No checking is performed to make sure the hash matches the data.
     @see SHAMap
@@ -61,6 +61,13 @@ public:
         */
         keyBytes = 32,
     };
+
+    // Please use this one. For a reference use Ptr const&
+    typedef std::shared_ptr <NodeObject> Ptr;
+
+    // These are DEPRECATED, type names are capitalized.
+    typedef std::shared_ptr <NodeObject> pointer;
+    typedef pointer const& ref;
 
 private:
     // This hack is used to make the constructor effectively private
@@ -85,19 +92,40 @@ public:
                     is overwritten.
         @param hash The 256-bit hash of the payload data.
     */
-    static
-    std::shared_ptr<NodeObject>
-    createObject (NodeObjectType type,
-        Blob&& data, uint256 const& hash);
+    static Ptr createObject (NodeObjectType type,
+                             Blob&& data,
+                             uint256 const& hash);
 
-    /** Returns the type of this object. */
+    /** Retrieve the type of this object.
+    */
     NodeObjectType getType () const;
 
-    /** Returns the hash of the data. */
+    /** Retrieve the hash metadata.
+    */
     uint256 const& getHash () const;
 
-    /** Returns the underlying data. */
+    /** Retrieve the binary data.
+    */
     Blob const& getData () const;
+
+    /** See if this object has the same data as another object.
+    */
+    bool isCloneOf (NodeObject::Ptr const& other) const;
+
+    /** Binary function that satisfies the strict-weak-ordering requirement.
+
+        This compares the hashes of both objects and returns true if
+        the first hash is considered to go before the second.
+
+        @see std::sort
+    */
+    struct LessThan
+    {
+        inline bool operator() (NodeObject::Ptr const& lhs, NodeObject::Ptr const& rhs) const noexcept
+        {
+            return lhs->getHash () < rhs->getHash ();
+        }
+    };
 
 private:
     NodeObjectType mType;

@@ -26,28 +26,21 @@
 #include <ripple/server/Role.h>
 #include <ripple/nodestore/ScopedMetrics.h>
 
-#include <beast/utility/Journal.h>
-
 namespace ripple {
 
-class Application;
 class NetworkOPs;
-class LedgerMaster;
 
 namespace RPC {
 
 /** The context of information needed to call an RPC. */
 struct Context
 {
-    beast::Journal j;
     Json::Value params;
-    Application& app;
     Resource::Charge& loadType;
     NetworkOPs& netOps;
-    LedgerMaster& ledgerMaster;
     Role role;
-    JobQueueSuspender suspend;
     InfoSub::pointer infoSub;
+    RPC::Yield yield;
     NodeStore::ScopedMetrics metrics;
 };
 

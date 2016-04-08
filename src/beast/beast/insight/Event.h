@@ -32,7 +32,7 @@ namespace beast {
 namespace insight {
 
 /** A metric for reporting event timing.
-
+    
     An event is an operation that has an associated millisecond time, or
     other integral value. Because events happen at a specific moment, the
     metric only supports a push-style interface.
@@ -43,7 +43,7 @@ namespace insight {
 class Event : public Base
 {
 public:
-    using value_type = EventImpl::value_type;
+    typedef EventImpl::value_type value_type;
 
     /** Create a null metric.
         A null metric reports no information.

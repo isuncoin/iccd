@@ -18,15 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/basics/Log.h>
-#include <ripple/json/json_value.h>
-#include <ripple/json/json_writer.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
 #include <ripple/rpc/InternalHandler.h>
-#include <string>
 
 namespace ripple {
 
@@ -45,10 +37,10 @@ Json::Value doInternal (RPC::Context& context)
     {
         if (name == h->name_)
         {
-            JLOG (context.j.warning)
+            WriteLog (lsWARNING, RPCHandler)
                 << "Internal command " << name << ": " << params;
             Json::Value ret = h->handler_ (params);
-            JLOG (context.j.warning)
+            WriteLog (lsWARNING, RPCHandler)
                 << "Internal command returns: " << ret;
             return ret;
         }

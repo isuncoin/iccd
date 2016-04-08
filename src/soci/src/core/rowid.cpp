@@ -6,8 +6,8 @@
 //
 
 #define SOCI_SOURCE
-#include "soci/rowid.h"
-#include "soci/session.h"
+#include "rowid.h"
+#include "session.h"
 
 using namespace soci;
 using namespace soci::details;

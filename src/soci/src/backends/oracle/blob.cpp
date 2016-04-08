@@ -5,9 +5,9 @@
 // http://www.boost.org/LICENSE_1_0.txt)
 //
 
-#include "soci/oracle/soci-oracle.h"
+#include "soci-oracle.h"
 #include "error.h"
-#include "soci/statement.h"
+#include "statement.h"
 #include <cstring>
 #include <sstream>
 #include <cstdio>

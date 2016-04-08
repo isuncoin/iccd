@@ -82,10 +82,6 @@ public:
     isHighLatency() const = 0;
 
     virtual
-    int
-    getScore (bool) const = 0;
-
-    virtual
     RippleAddress const&
     getNodePublic() const = 0;
 

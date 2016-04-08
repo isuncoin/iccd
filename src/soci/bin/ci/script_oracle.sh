@@ -4,11 +4,15 @@
 # Copyright (c) 2013 Mateusz Loskot <mateusz@loskot.net>
 #
 source ${TRAVIS_BUILD_DIR}/bin/ci/common.sh
-source ${TRAVIS_BUILD_DIR}/bin/ci/oracle.sh
+
+if [ "${CXX}" == "g++" ]
+then
+    ORACLE_USER="soci_tester"
+else
+    ORACLE_USER="soci_tester1"
+fi
 
 cmake \
-    -DCMAKE_VERBOSE_MAKEFILE=ON \
-    -DWITH_BOOST=OFF \
     -DSOCI_TESTS=ON \
     -DSOCI_STATIC=OFF \
     -DSOCI_DB2=OFF \
@@ -19,8 +23,8 @@ cmake \
     -DSOCI_ORACLE=ON \
     -DSOCI_POSTGRESQL=OFF \
     -DSOCI_SQLITE3=OFF \
-    -DSOCI_ORACLE_TEST_CONNSTR:STRING="service=XE user=travis password=travis" \
-    ..
+    -DSOCI_ORACLE_TEST_CONNSTR:STRING="service=brzuchol.loskot.net user=${ORACLE_USER} password=soci_secret" \
+    ..  
 
 run_make
 run_test

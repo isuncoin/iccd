@@ -28,9 +28,9 @@ namespace beast {
 template <bool IsConst, class T>
 struct maybe_const
 {
-    using type = typename std::conditional <IsConst,
+    typedef typename std::conditional <IsConst,
         typename std::remove_const <T>::type const,
-        typename std::remove_const <T>::type>::type;
+        typename std::remove_const <T>::type>::type type;
 };
 
 /** Alias for omitting `typename`. */

@@ -20,6 +20,7 @@
 #include <BeastConfig.h>
 #include <ripple/rpc/impl/Handler.h>
 #include <ripple/rpc/handlers/Handlers.h>
+#include <ripple/rpc/handlers/Ledger.h>
 #include <ripple/rpc/handlers/Version.h>
 
 namespace ripple {
@@ -58,12 +59,9 @@ Status handle (Context& context, Object& object)
 
 class HandlerTable {
   public:
-    template<std::size_t N>
-    HandlerTable (const Handler(&entries)[N])
-    {
-        for (std::size_t i = 0; i < N; ++i)
+    HandlerTable (std::vector<Handler> const& entries) {
+        for (auto& entry: entries)
         {
-            auto const& entry = entries[i];
             assert (table_.find(entry.name_) == table_.end());
             table_[entry.name_] = entry;
         }
@@ -73,7 +71,7 @@ class HandlerTable {
         addHandler<VersionHandler>();
     }
 
-    const Handler* getHandler(std::string name) const {
+    const Handler* getHandler(std::string name) {
         auto i = table_.find(name);
         return i == table_.end() ? nullptr : &i->second;
     }
@@ -97,7 +95,7 @@ class HandlerTable {
     };
 };
 
-Handler handlerArray[] {
+HandlerTable HANDLERS({
     // Some handlers not specified here are added to the table via addHandler()
     // Request-response methods
     {   "account_info",         byRef (&doAccountInfo),         Role::USER,  NO_CONDITION  },
@@ -111,11 +109,9 @@ Handler handlerArray[] {
     {   "can_delete",           byRef (&doCanDelete),           Role::ADMIN,   NO_CONDITION     },
     {   "connect",              byRef (&doConnect),             Role::ADMIN,   NO_CONDITION     },
     {   "consensus_info",       byRef (&doConsensusInfo),       Role::ADMIN,   NO_CONDITION     },
-    {   "gateway_balances",     byRef (&doGatewayBalances),     Role::USER,  NO_CONDITION  },
     {   "get_counts",           byRef (&doGetCounts),           Role::ADMIN,   NO_CONDITION     },
     {   "internal",             byRef (&doInternal),            Role::ADMIN,   NO_CONDITION     },
     {   "feature",              byRef (&doFeature),             Role::ADMIN,   NO_CONDITION     },
-    {   "fee",                  byRef (&doFee),                 Role::ADMIN,   NO_CONDITION     },
     {   "fetch_info",           byRef (&doFetchInfo),           Role::ADMIN,   NO_CONDITION     },
     {   "ledger_accept",        byRef (&doLedgerAccept),        Role::ADMIN,   NEEDS_CURRENT_LEDGER  },
     {   "ledger_cleaner",       byRef (&doLedgerCleaner),       Role::ADMIN,   NEEDS_NETWORK_CONNECTION  },
@@ -137,9 +133,7 @@ Handler handlerArray[] {
     {   "random",               byRef (&doRandom),              Role::USER,  NO_CONDITION     },
     {   "ripple_path_find",     byRef (&doRipplePathFind),      Role::USER,  NO_CONDITION  },
     {   "sign",                 byRef (&doSign),                Role::USER,  NO_CONDITION     },
-    {   "sign_for",             byRef (&doSignFor),             Role::USER,  NO_CONDITION     },
     {   "submit",               byRef (&doSubmit),              Role::USER,  NEEDS_CURRENT_LEDGER  },
-    {   "submit_multisigned",   byRef (&doSubmitMultiSigned),   Role::USER,  NEEDS_CURRENT_LEDGER  },
     {   "server_info",          byRef (&doServerInfo),          Role::USER,  NO_CONDITION     },
     {   "server_state",         byRef (&doServerState),         Role::USER,  NO_CONDITION     },
     {   "stop",                 byRef (&doStop),                Role::ADMIN,   NO_CONDITION     },
@@ -161,13 +155,12 @@ Handler handlerArray[] {
     // Evented methods
     {   "subscribe",            byRef (&doSubscribe),           Role::USER,  NO_CONDITION     },
     {   "unsubscribe",          byRef (&doUnsubscribe),         Role::USER,  NO_CONDITION     },
-};
+});
 
 } // namespace
 
 const Handler* getHandler(std::string const& name) {
-    static HandlerTable const handlers(handlerArray);
-    return handlers.getHandler(name);
+    return HANDLERS.getHandler(name);
 }
 
 } // RPC

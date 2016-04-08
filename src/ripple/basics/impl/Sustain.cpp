@@ -70,7 +70,7 @@ std::string StopSustain ()
     return "Terminating monitor";
 }
 
-std::string DoSustain ()
+std::string DoSustain (std::string const& logFile)
 {
     pManager = getpid ();
     signal (SIGINT, stop_manager);
@@ -111,6 +111,8 @@ std::string DoSustain ()
 
         auto pc = std::to_string (pChild);
         rename ("core", ("core." + pc).c_str ());
+        if (!logFile.empty()) // FIXME: logFile hasn't been set yet
+            rename (logFile.c_str(), (logFile + "." + pc).c_str ());
     }
 }
 
@@ -121,7 +123,7 @@ bool HaveSustain ()
     return false;
 }
 
-std::string DoSustain ()
+std::string DoSustain (const std::string&)
 {
     return "";
 }

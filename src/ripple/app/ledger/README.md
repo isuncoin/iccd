@@ -357,7 +357,7 @@ Lists all of the offers and trust lines that are associated with an account.
 Lists one or more offers that have the same quality.
 
 If a pair of Currency and Issuer fields are all zeros, then that pair is
-dealing in XRP.
+dealing in ICC.
 
 The code, at the moment, does not recognize that the Currency and Issuer
 fields are currencies and issuers.  So those values are presented in hex,
@@ -420,7 +420,7 @@ ledger's sequence number, it attempts to publish those ledgers, retrieving
 them if needed.
 
 If there are no new ledgers to publish, `doAdvance` determines if it can
-backfill history. If the publication is not caught up, backfilling is not
+backfill history. If the publication is not caught up, bakfilling is not
 attempted to conserve resources.
 
 If history can be backfilled, the missing ledger with the highest

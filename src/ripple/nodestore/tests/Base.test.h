@@ -30,35 +30,6 @@
 namespace ripple {
 namespace NodeStore {
 
-/** Binary function that satisfies the strict-weak-ordering requirement.
-
-    This compares the hashes of both objects and returns true if
-    the first hash is considered to go before the second.
-
-    @see std::sort
-*/
-struct LessThan
-{
-    bool
-    operator()(
-        std::shared_ptr<NodeObject> const& lhs,
-            std::shared_ptr<NodeObject> const& rhs) const noexcept
-    {
-        return lhs->getHash () < rhs->getHash ();
-    }
-};
-
-/** Returns `true` if objects are identical. */
-inline
-bool isSame (std::shared_ptr<NodeObject> const& lhs,
-    std::shared_ptr<NodeObject> const& rhs)
-{
-    return
-        (lhs->getType() == rhs->getType()) &&
-        (lhs->getHash() == rhs->getHash()) &&
-        (lhs->getData() == rhs->getData());
-}
-
 // Some common code for the unit tests
 //
 class TestBase : public beast::unit_test::suite
@@ -81,16 +52,16 @@ public:
         {
         }
 
-        std::shared_ptr<NodeObject> createObject ()
+        NodeObject::Ptr createObject ()
         {
             NodeObjectType type;
             switch (r.nextInt (4))
             {
             case 0: type = hotLEDGER; break;
+            case 1: type = hotTRANSACTION; break;
             case 2: type = hotACCOUNT_NODE; break;
             case 3: type = hotTRANSACTION_NODE; break;
             default:
-            case 1: // was hotTRANSACTION
                 type = hotUNKNOWN;
                 break;
             };
@@ -132,7 +103,7 @@ public:
         {
             for (int i = 0; i < lhs.size (); ++i)
             {
-                if (! isSame(lhs[i], rhs[i]))
+                if (! lhs [i]->isCloneOf (rhs [i]))
                 {
                     result = false;
                     break;
@@ -164,7 +135,7 @@ public:
 
         for (int i = 0; i < batch.size (); ++i)
         {
-            std::shared_ptr<NodeObject> object;
+            NodeObject::Ptr object;
 
             Status const status = backend.fetch (
                 batch [i]->getHash ().cbegin (), &object);
@@ -184,7 +155,7 @@ public:
     {
         for (int i = 0; i < batch.size (); ++i)
         {
-            std::shared_ptr<NodeObject> object;
+            NodeObject::Ptr object;
 
             Status const status = backend.fetch (
                 batch [i]->getHash ().cbegin (), &object);
@@ -198,7 +169,7 @@ public:
     {
         for (int i = 0; i < batch.size (); ++i)
         {
-            std::shared_ptr<NodeObject> const object (batch [i]);
+            NodeObject::Ptr const object (batch [i]);
 
             Blob data (object->getData ());
 
@@ -218,7 +189,7 @@ public:
 
         for (int i = 0; i < batch.size (); ++i)
         {
-            std::shared_ptr<NodeObject> object = db.fetch (batch [i]->getHash ());
+            NodeObject::Ptr object = db.fetch (batch [i]->getHash ());
 
             if (object != nullptr)
                 pCopy->push_back (object);

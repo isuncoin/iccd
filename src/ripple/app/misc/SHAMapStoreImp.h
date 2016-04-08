@@ -20,10 +20,10 @@
 #ifndef RIPPLE_APP_MISC_SHAMAPSTOREIMP_H_INCLUDED
 #define RIPPLE_APP_MISC_SHAMAPSTOREIMP_H_INCLUDED
 
-#include <ripple/core/DatabaseCon.h>
+#include <ripple/app/data/DatabaseCon.h>
 #include <ripple/app/misc/SHAMapStore.h>
 #include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/core/SociDB.h>
+#include <ripple/app/data/SociDB.h>
 #include <ripple/nodestore/impl/Tuning.h>
 #include <ripple/nodestore/DatabaseRotating.h>
 #include <iostream>
@@ -71,8 +71,6 @@ private:
         void setLastRotated (LedgerIndex seq);
     };
 
-    Application& app_;
-
     // name of state database
     std::string const dbName_ = "state";
     // prefix of on-disk nodestore backend instances
@@ -107,8 +105,7 @@ private:
     DatabaseCon* ledgerDb_ = nullptr;
 
 public:
-    SHAMapStoreImp (Application& app,
-            Setup const& setup,
+    SHAMapStoreImp (Setup const& setup,
             Stoppable& parent,
             NodeStore::Scheduler& scheduler,
             beast::Journal journal,
@@ -162,7 +159,7 @@ public:
 
 private:
     // callback for visitNodes
-    bool copyNode (std::uint64_t& nodeCount, SHAMapAbstractNode const &node);
+    bool copyNode (std::uint64_t& nodeCount, SHAMapTreeNode const &node);
     void run();
     void dbPaths();
     std::shared_ptr <NodeStore::Backend> makeBackendRotating (

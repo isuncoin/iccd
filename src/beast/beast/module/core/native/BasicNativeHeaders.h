@@ -106,10 +106,7 @@
  #include <mapi.h>
  #include <float.h>
  #include <process.h>
- #pragma warning ( push )
- #pragma warning ( disable: 4091 )
  #include <shlobj.h>
- #pragma warning ( pop )
  #include <shlwapi.h>
  #include <mmsystem.h>
 

@@ -180,7 +180,7 @@ template <class ElementType>
 class DefaultElementComparator
 {
 private:
-    using ParameterType = ElementType;
+    typedef ElementType ParameterType;
 
 public:
     static int compareElements (ParameterType first, ParameterType second)

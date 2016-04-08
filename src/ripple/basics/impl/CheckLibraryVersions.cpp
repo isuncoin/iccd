@@ -29,7 +29,7 @@
 namespace ripple {
 namespace version {
 
-using VersionNumber = unsigned long long;
+typedef unsigned long long VersionNumber;
 
 const char boostMinimal[] = "1.55.0";
 const char openSSLMinimal[] = "1.0.1-g";

@@ -37,7 +37,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 #include <utility>
 
 #ifndef NODESTORE_TIMING_DO_VERIFY
@@ -107,12 +107,12 @@ public:
     }
 
     // Returns the n-th complete NodeObject
-    std::shared_ptr<NodeObject>
+    NodeObject::Ptr
     obj (std::size_t n)
     {
         gen_.seed(n+1);
         uint256 key;
-        auto const data =
+        auto const data = 
             static_cast<std::uint8_t*>(&*key.begin());
         *data = prefix_;
         rngcpy (data + 1, key.size() - 1, gen_);
@@ -356,11 +356,11 @@ public:
             {
                 try
                 {
-                    std::shared_ptr<NodeObject> obj;
-                    std::shared_ptr<NodeObject> result;
+                    NodeObject::Ptr obj;
+                    NodeObject::Ptr result;
                     obj = seq1_.obj(dist_(gen_));
                     backend_.fetch(obj->getHash().data(), &result);
-                    suite_.expect (result && isSame(result, obj));
+                    suite_.expect (result && result->isCloneOf(obj));
                 }
                 catch(std::exception const& e)
                 {
@@ -420,7 +420,7 @@ public:
                 try
                 {
                     auto const key = seq2_.key(i);
-                    std::shared_ptr<NodeObject> result;
+                    NodeObject::Ptr result;
                     backend_.fetch(key.data(), &result);
                     suite_.expect (! result);
                 }
@@ -489,17 +489,17 @@ public:
                     if (rand_(gen_) < missingNodePercent)
                     {
                         auto const key = seq2_.key(dist_(gen_));
-                        std::shared_ptr<NodeObject> result;
+                        NodeObject::Ptr result;
                         backend_.fetch(key.data(), &result);
                         suite_.expect (! result);
                     }
                     else
                     {
-                        std::shared_ptr<NodeObject> obj;
-                        std::shared_ptr<NodeObject> result;
+                        NodeObject::Ptr obj;
+                        NodeObject::Ptr result;
                         obj = seq1_.obj(dist_(gen_));
                         backend_.fetch(obj->getHash().data(), &result);
-                        suite_.expect (result && isSame(result, obj));
+                        suite_.expect (result && result->isCloneOf(obj));
                     }
                 }
                 catch(std::exception const& e)
@@ -508,7 +508,7 @@ public:
                 }
             }
         };
-
+        
         try
         {
             parallel_for_id<Body>(params.items, params.threads,
@@ -572,15 +572,15 @@ public:
                     if (rand_(gen_) < 200)
                     {
                         // historical lookup
-                        std::shared_ptr<NodeObject> obj;
-                        std::shared_ptr<NodeObject> result;
+                        NodeObject::Ptr obj;
+                        NodeObject::Ptr result;
                         auto const j = older_(gen_);
                         obj = seq1_.obj(j);
-                        std::shared_ptr<NodeObject> result1;
+                        NodeObject::Ptr result1;
                         backend_.fetch(obj->getHash().data(), &result);
                         suite_.expect (result != nullptr,
                             "object " + std::to_string(j) + " missing");
-                        suite_.expect (isSame(result, obj),
+                        suite_.expect (result->isCloneOf(obj),
                             "object " + std::to_string(j) + " not a clone");
                     }
 
@@ -594,13 +594,12 @@ public:
                         case 0:
                         {
                             // fetch recent
-                            std::shared_ptr<NodeObject> obj;
-                            std::shared_ptr<NodeObject> result;
+                            NodeObject::Ptr obj;
+                            NodeObject::Ptr result;
                             auto const j = recent_(gen_);
                             obj = seq1_.obj(j);
                             backend_.fetch(obj->getHash().data(), &result);
-                            suite_.expect(! result ||
-                                isSame(result, obj));
+                            suite_.expect(! result || result->isCloneOf(obj));
                             break;
                         }
 

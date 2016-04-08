@@ -20,18 +20,14 @@
 #ifndef RIPPLE_OVERLAY_OVERLAYIMPL_H_INCLUDED
 #define RIPPLE_OVERLAY_OVERLAYIMPL_H_INCLUDED
 
-#include <ripple/app/main/Application.h>
-#include <ripple/core/Job.h>
 #include <ripple/overlay/Overlay.h>
-#include <ripple/overlay/impl/Manifest.h>
-#include <ripple/overlay/impl/TrafficCount.h>
 #include <ripple/server/Handoff.h>
 #include <ripple/server/ServerHandler.h>
 #include <ripple/basics/Resolver.h>
-#include <ripple/basics/chrono.h>
+#include <ripple/basics/seconds_clock.h>
 #include <ripple/basics/UnorderedContainers.h>
-#include <ripple/peerfinder/PeerfinderManager.h>
-#include <ripple/resource/ResourceManager.h>
+#include <ripple/peerfinder/Manager.h>
+#include <ripple/resource/Manager.h>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl/context.hpp>
 #include <boost/asio/strand.hpp>
@@ -41,7 +37,7 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 #include <mutex>
 #include <unordered_map>
 
@@ -98,34 +94,41 @@ private:
         on_timer (error_code ec);
     };
 
-    Application& app_;
     boost::asio::io_service& io_service_;
     boost::optional<boost::asio::io_service::work> work_;
     boost::asio::io_service::strand strand_;
+
     std::recursive_mutex mutex_; // VFALCO use std::mutex
     std::condition_variable_any cond_;
     std::weak_ptr<Timer> timer_;
     boost::container::flat_map<
         Child*, std::weak_ptr<Child>> list_;
+
     Setup setup_;
     beast::Journal journal_;
     ServerHandler& serverHandler_;
+
     Resource::Manager& m_resourceManager;
+
     std::unique_ptr <PeerFinder::Manager> m_peerFinder;
-    TrafficCount m_traffic;
+
     hash_map <PeerFinder::Slot::ptr,
         std::weak_ptr <PeerImp>> m_peers;
+
     hash_map<RippleAddress, std::weak_ptr<PeerImp>> m_publicKeyMap;
+
     hash_map<Peer::id_t, std::weak_ptr<PeerImp>> m_shortIdMap;
+
     Resolver& m_resolver;
+
     std::atomic <Peer::id_t> next_id_;
-    ManifestCache manifestCache_;
+
     int timer_count_;
 
     //--------------------------------------------------------------------------
 
 public:
-    OverlayImpl (Application& app, Setup const& setup, Stoppable& parent,
+    OverlayImpl (Setup const& setup, Stoppable& parent,
         ServerHandler& serverHandler, Resource::Manager& resourceManager,
         Resolver& resolver, boost::asio::io_service& io_service,
         BasicConfig const& config);
@@ -151,12 +154,6 @@ public:
     serverHandler()
     {
         return serverHandler_;
-    }
-
-    ManifestCache const&
-    manifestCache() const
-    {
-        return manifestCache_;
     }
 
     Setup const&
@@ -196,15 +193,6 @@ public:
     relay (protocol::TMValidation& m,
         uint256 const& uid) override;
 
-    virtual
-    void
-    setupValidatorKeyManifests (BasicConfig const& config,
-                                DatabaseCon& db) override;
-
-    virtual
-    void
-    saveValidatorKeyManifests (DatabaseCon& db) const override;
-
     //--------------------------------------------------------------------------
     //
     // OverlayImpl
@@ -224,7 +212,7 @@ public:
     void
     activate (std::shared_ptr<PeerImp> const& peer);
 
-    // Called when an active peer is destroyed.
+    /** Called when an active peer is destroyed. */
     void
     onPeerDeactivate (Peer::id_t id, RippleAddress const& publicKey);
 
@@ -255,12 +243,6 @@ public:
     selectPeers (PeerSet& set, std::size_t limit, std::function<
         bool(std::shared_ptr<Peer> const&)> score) override;
 
-    // Called when TMManifests is received from a peer
-    void
-    onManifests (
-        std::shared_ptr<protocol::TMManifests> const& m,
-            std::shared_ptr<PeerImp> const& from);
-
     static
     bool
     isPeerUpgrade (beast::http::message const& request);
@@ -268,12 +250,6 @@ public:
     static
     std::string
     makePrefix (std::uint32_t id);
-
-    void
-    reportTraffic (
-        TrafficCount::category cat,
-        bool isInbound,
-        int bytes);
 
 private:
     std::shared_ptr<HTTP::Writer>
@@ -283,11 +259,6 @@ private:
     void
     connect (beast::IP::Endpoint const& remote_endpoint) override;
 
-    /*  The number of active peers on the network
-        Active peers are only those peers that have completed the handshake
-        and are running the Ripple protocol.
-    */
-    // VFALCO Why private?
     std::size_t
     size() override;
 
@@ -327,7 +298,7 @@ private:
     //
 
     void
-    onWrite (beast::PropertyStream::Map& stream) override;
+    onWrite (beast::PropertyStream::Map& stream);
 
     //--------------------------------------------------------------------------
 

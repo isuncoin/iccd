@@ -37,13 +37,6 @@ KeyType keyTypeFromString (std::string const& s);
 
 const char* to_string (KeyType type);
 
-template <class Stream>
-inline
-Stream& operator<<(Stream& s, KeyType type)
-{
-    return s << to_string(type);
-}
-
 }
 
 #endif

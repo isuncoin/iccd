@@ -101,7 +101,7 @@ private:
     void indent ();
     void unindent ();
 
-    using ChildValues = std::vector<std::string>;
+    typedef std::vector<std::string> ChildValues;
 
     ChildValues childValues_;
     std::string document_;
@@ -155,7 +155,7 @@ private:
     void indent ();
     void unindent ();
 
-    using ChildValues = std::vector<std::string>;
+    typedef std::vector<std::string> ChildValues;
 
     ChildValues childValues_;
     std::ostream* document_;

@@ -20,7 +20,7 @@
 #ifndef RIPPLE_PEERFINDER_LOGIC_H_INCLUDED
 #define RIPPLE_PEERFINDER_LOGIC_H_INCLUDED
 
-#include <ripple/peerfinder/PeerfinderManager.h>
+#include <ripple/peerfinder/Manager.h>
 #include <ripple/peerfinder/impl/Bootcache.h>
 #include <ripple/peerfinder/impl/Counts.h>
 #include <ripple/peerfinder/impl/Fixed.h>
@@ -52,48 +52,74 @@ public:
     // Maps remote endpoints to slots. Since a slot has a
     // remote endpoint upon construction, this holds all counts.
     //
-    using Slots = std::map <beast::IP::Endpoint,
-        std::shared_ptr <SlotImp>>;
+    typedef std::map <beast::IP::Endpoint,
+        std::shared_ptr <SlotImp>> Slots;
+
+    typedef std::map <beast::IP::Endpoint, Fixed> FixedSlots;
+
+    // A set of unique Ripple public keys
+    typedef std::set <RipplePublicKey> Keys;
+
+    // A set of non-unique IPAddresses without ports, used
+    // to filter duplicates when making outgoing connections.
+    typedef std::multiset <beast::IP::Endpoint> ConnectedAddresses;
+
+    struct State
+    {
+        State (
+            Store* store,
+            clock_type& clock,
+            beast::Journal journal)
+            : stopping (false)
+            , counts ()
+            , livecache (clock, beast::Journal (
+                journal, Reporting::livecache))
+            , bootcache (*store, clock, beast::Journal (
+                journal, Reporting::bootcache))
+        {
+        }
+
+        // True if we are stopping.
+        bool stopping;
+
+        // The source we are currently fetching.
+        // This is used to cancel I/O during program exit.
+        beast::SharedPtr <Source> fetchSource;
+
+        // Configuration settings
+        Config config;
+
+        // Slot counts and other aggregate statistics.
+        Counts counts;
+
+        // A list of slots that should always be connected
+        FixedSlots fixed;
+
+        // Live livecache from mtENDPOINTS messages
+        Livecache <> livecache;
+
+        // LiveCache of addresses suitable for gaining initial connections
+        Bootcache bootcache;
+
+        // Holds all counts
+        Slots slots;
+
+        // The addresses (but not port) we are connected to. This includes
+        // outgoing connection attempts. Note that this set can contain
+        // duplicates (since the port is not set)
+        ConnectedAddresses connected_addresses;
+
+        // Set of public keys belonging to active peers
+        Keys keys;
+    };
+
+    typedef beast::SharedData <State> SharedState;
 
     beast::Journal m_journal;
+    SharedState m_state;
     clock_type& m_clock;
     Store& m_store;
     Checker& m_checker;
-
-    std::recursive_mutex lock_;
-
-    // True if we are stopping.
-    bool stopping_ = false;
-
-    // The source we are currently fetching.
-    // This is used to cancel I/O during program exit.
-    beast::SharedPtr <Source> fetchSource_;
-
-    // Configuration settings
-    Config config_;
-
-    // Slot counts and other aggregate statistics.
-    Counts counts_;
-
-    // A list of slots that should always be connected
-    std::map <beast::IP::Endpoint, Fixed> fixed_;
-
-    // Live livecache from mtENDPOINTS messages
-    Livecache <> livecache_;
-
-    // LiveCache of addresses suitable for gaining initial connections
-    Bootcache bootcache_;
-
-    // Holds all counts
-    Slots slots_;
-
-    // The addresses (but not port) we are connected to. This includes
-    // outgoing connection attempts. Note that this set can contain
-    // duplicates (since the port is not set)
-    std::multiset <beast::IP::Address> connectedAddresses_;
-
-    // Set of public keys belonging to active peers
-    std::set <RipplePublicKey> keys_;
 
     // A list of dynamic sources to consult as a fallback
     std::vector <beast::SharedPtr <Source>> m_sources;
@@ -107,13 +133,10 @@ public:
     Logic (clock_type& clock, Store& store,
             Checker& checker, beast::Journal journal)
         : m_journal (journal, Reporting::logic)
+        , m_state (&store, std::ref (clock), journal)
         , m_clock (clock)
         , m_store (store)
         , m_checker (checker)
-        , livecache_ (m_clock,
-            beast::Journal (journal, Reporting::livecache))
-        , bootcache_ (store, m_clock,
-            beast::Journal (journal, Reporting::bootcache))
         , m_whenBroadcast (m_clock.now())
         , m_squelches (m_clock)
     {
@@ -124,8 +147,9 @@ public:
     //
     void load ()
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
-        bootcache_.load ();
+        typename SharedState::Access state (m_state);
+
+        state->bootcache.load ();
     }
 
     /** Stop the logic.
@@ -136,10 +160,10 @@ public:
     */
     void stop ()
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
-        stopping_ = true;
-        if (fetchSource_ != nullptr)
-            fetchSource_->cancel ();
+        typename SharedState::Access state (m_state);
+        state->stopping = true;
+        if (state->fetchSource != nullptr)
+            state->fetchSource->cancel ();
     }
 
     //--------------------------------------------------------------------------
@@ -151,16 +175,16 @@ public:
     void
     config (Config const& c)
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
-        config_ = c;
-        counts_.onConfig (config_);
+        typename SharedState::Access state (m_state);
+        state->config = c;
+        state->counts.onConfig (state->config);
     }
 
     Config
     config()
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
-        return config_;
+        typename SharedState::Access state (m_state);
+        return state->config;
     }
 
     void
@@ -176,7 +200,7 @@ public:
     addFixedPeer (std::string const& name,
         std::vector <beast::IP::Endpoint> const& addresses)
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         if (addresses.empty ())
         {
@@ -193,7 +217,7 @@ public:
                     remote_address.to_string ());
             }
 
-            auto result (fixed_.emplace (std::piecewise_construct,
+            auto result (state->fixed.emplace (std::piecewise_construct,
                 std::forward_as_tuple (remote_address),
                     std::make_tuple (std::ref (m_clock))));
 
@@ -217,9 +241,9 @@ public:
         if (ec == boost::asio::error::operation_aborted)
             return;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
-        auto const iter (slots_.find (remoteAddress));
-        if (iter == slots_.end())
+        typename SharedState::Access state (m_state);
+        Slots::iterator const iter (state->slots.find (remoteAddress));
+        if (iter == state->slots.end())
         {
             // The slot disconnected before we finished the check
             if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
@@ -239,7 +263,7 @@ public:
             if (m_journal.error) m_journal.error << beast::leftw (18) <<
                 "Logic testing " << iter->first << " with error, " <<
                 ec.message();
-            bootcache_.on_failure (checkedAddress);
+            state->bootcache.on_failure (checkedAddress);
             return;
         }
 
@@ -258,14 +282,12 @@ public:
             "Logic accept" << remote_endpoint <<
             " on local " << local_endpoint;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // Check for duplicate connection
-        if (is_public (remote_endpoint))
         {
-            auto const iter = connectedAddresses_.find (
-                remote_endpoint.address());
-            if (iter != connectedAddresses_.end())
+            auto const iter = state->connected_addresses.find (remote_endpoint);
+            if (iter != state->connected_addresses.end())
             {
                 if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
                     "Logic dropping inbound " << remote_endpoint <<
@@ -274,20 +296,53 @@ public:
             }
         }
 
+        // Check for self-connect by address
+        // This is disabled because otherwise we couldn't connect to
+        // ourselves for testing purposes. Eventually a self-connect will
+        // be dropped if the public key is the same. And if it's different,
+        // we want to allow the self-connect.
+        /*
+        {
+            auto const iter (state->slots.find (local_endpoint));
+            if (iter != state->slots.end ())
+            {
+                Slot::ptr const& self (iter->second);
+                bool const consistent ((
+                    self->local_endpoint() == boost::none) ||
+                        (*self->local_endpoint() == remote_endpoint));
+                if (! consistent)
+                {
+                    m_journal.fatal << "\n" <<
+                        "Local endpoint mismatch\n" <<
+                        "local_endpoint=" << local_endpoint <<
+                            ", remote_endpoint=" << remote_endpoint << "\n" <<
+                        "self->local_endpoint()=" << *self->local_endpoint() <<
+                            ", self->remote_endpoint()=" << self->remote_endpoint();
+                }
+                // This assert goes off
+                //assert (consistent);
+                if (m_journal.warning) m_journal.warning << beast::leftw (18) <<
+                    "Logic dropping " << remote_endpoint <<
+                    " as self connect";
+                return SlotImp::ptr ();
+            }
+        }
+        */
+
         // Create the slot
         SlotImp::ptr const slot (std::make_shared <SlotImp> (local_endpoint,
-            remote_endpoint, fixed (remote_endpoint.address ()),
+            remote_endpoint, fixed (remote_endpoint.address (), state),
                 m_clock));
         // Add slot to table
-        auto const result (slots_.emplace (
+        auto const result (state->slots.emplace (
             slot->remote_endpoint (), slot));
         // Remote address must not already exist
         assert (result.second);
         // Add to the connected address list
-        connectedAddresses_.emplace (remote_endpoint.address());
+        state->connected_addresses.emplace (remote_endpoint.at_port (0));
 
         // Update counts
-        counts_.add (*slot);
+        state->counts.add (*slot);
 
         return result.first->second;
     }
@@ -299,11 +354,11 @@ public:
         if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
             "Logic connect " << remote_endpoint;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // Check for duplicate connection
-        if (slots_.find (remote_endpoint) !=
-            slots_.end ())
+        if (state->slots.find (remote_endpoint) !=
+            state->slots.end ())
         {
             if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
                 "Logic dropping " << remote_endpoint <<
@@ -313,20 +368,20 @@ public:
 
         // Create the slot
         SlotImp::ptr const slot (std::make_shared <SlotImp> (
-            remote_endpoint, fixed (remote_endpoint), m_clock));
+            remote_endpoint, fixed (remote_endpoint, state), m_clock));
 
         // Add slot to table
-        auto const result =
-            slots_.emplace (slot->remote_endpoint (),
-                slot);
+        std::pair <Slots::iterator, bool> result (
+            state->slots.emplace (slot->remote_endpoint (),
+                slot));
         // Remote address must not already exist
         assert (result.second);
 
         // Add to the connected address list
-        connectedAddresses_.emplace (remote_endpoint.address());
+        state->connected_addresses.emplace (remote_endpoint.at_port (0));
 
         // Update counts
-        counts_.add (*slot);
+        state->counts.add (*slot);
 
         return result.first->second;
     }
@@ -339,18 +394,18 @@ public:
             "Logic connected" << slot->remote_endpoint () <<
             " on local " << local_endpoint;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // The object must exist in our table
-        assert (slots_.find (slot->remote_endpoint ()) !=
-            slots_.end ());
+        assert (state->slots.find (slot->remote_endpoint ()) !=
+            state->slots.end ());
         // Assign the local endpoint now that it's known
         slot->local_endpoint (local_endpoint);
 
         // Check for self-connect by address
         {
-            auto const iter (slots_.find (local_endpoint));
-            if (iter != slots_.end ())
+            auto const iter (state->slots.find (local_endpoint));
+            if (iter != state->slots.end ())
             {
                 assert (iter->second->local_endpoint ()
                         == slot->remote_endpoint ());
@@ -362,9 +417,9 @@ public:
         }
 
         // Update counts
-        counts_.remove (*slot);
+        state->counts.remove (*slot);
         slot->state (Slot::connected);
-        counts_.add (*slot);
+        state->counts.add (*slot);
         return true;
     }
 
@@ -376,55 +431,56 @@ public:
             "Logic handshake " << slot->remote_endpoint () <<
             " with " << (cluster ? "clustered " : "") << "key " << key;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // The object must exist in our table
-        assert (slots_.find (slot->remote_endpoint ()) !=
-            slots_.end ());
+        assert (state->slots.find (slot->remote_endpoint ()) !=
+            state->slots.end ());
         // Must be accepted or connected
         assert (slot->state() == Slot::accept ||
             slot->state() == Slot::connected);
 
         // Check for duplicate connection by key
-        if (keys_.find (key) != keys_.end())
+        if (state->keys.find (key) != state->keys.end())
             return Result::duplicate;
 
         // See if we have an open space for this slot
-        if (! counts_.can_activate (*slot))
+        if (! state->counts.can_activate (*slot))
         {
             if (! slot->inbound())
-                bootcache_.on_success (
+                state->bootcache.on_success (
                     slot->remote_endpoint());
             return Result::full;
         }
 
         // Set key and cluster right before adding to the map
         // otherwise we could assert later when erasing the key.
-        counts_.remove (*slot);
+        state->counts.remove (*slot);
         slot->public_key (key);
         slot->cluster (cluster);
-        counts_.add (*slot);
+        state->counts.add (*slot);
 
         // Add the public key to the active set
-        auto const result = keys_.insert (key);
+        std::pair <Keys::iterator, bool> const result (
+            state->keys.insert (key));
         // Public key must not already exist
         assert (result.second);
         (void) result.second;
 
         // Change state and update counts
-        counts_.remove (*slot);
+        state->counts.remove (*slot);
         slot->activate (m_clock.now ());
-        counts_.add (*slot);
+        state->counts.add (*slot);
 
         if (! slot->inbound())
-            bootcache_.on_success (
+            state->bootcache.on_success (
                 slot->remote_endpoint());
 
         // Mark fixed slot success
         if (slot->fixed() && ! slot->inbound())
         {
-            auto iter (fixed_.find (slot->remote_endpoint()));
-            assert (iter != fixed_.end ());
+            auto iter (state->fixed.find (slot->remote_endpoint()));
+            assert (iter != state->fixed.end ());
             iter->second.success (m_clock.now ());
             if (m_journal.trace) m_journal.trace << beast::leftw (18) <<
                 "Logic fixed " << slot->remote_endpoint () << " success";
@@ -440,12 +496,12 @@ public:
     std::vector <Endpoint>
     redirect (SlotImp::ptr const& slot)
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
         RedirectHandouts h (slot);
-        livecache_.hops.shuffle();
+        state->livecache.hops.shuffle();
         handout (&h, (&h)+1,
-            livecache_.hops.begin(),
-                livecache_.hops.end());
+            state->livecache.hops.begin(),
+                state->livecache.hops.end());
         return std::move(h.list());
     }
 
@@ -460,33 +516,27 @@ public:
     {
         std::vector <beast::IP::Endpoint> const none;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // Count how many more outbound attempts to make
         //
-        auto needed (counts_.attempts_needed ());
+        auto needed (state->counts.attempts_needed ());
         if (needed == 0)
             return none;
 
         ConnectHandouts h (needed, m_squelches);
 
         // Make sure we don't connect to already-connected entries.
-        for (auto const& s : slots_)
-        {
-            auto const result (m_squelches.insert (
-                s.second->remote_endpoint().address()));
-            if (! result.second)
-                m_squelches.touch (result.first);
-        }
+        squelch_slots (state);
 
         // 1. Use Fixed if:
         //    Fixed active count is below fixed count AND
         //      ( There are eligible fixed addresses to try OR
         //        Any outbound attempts are in progress)
         //
-        if (counts_.fixed_active() < fixed_.size ())
+        if (state->counts.fixed_active() < state->fixed.size ())
         {
-            get_fixed (needed, h.list(), m_squelches);
+            get_fixed (needed, h.list(), m_squelches, state);
 
             if (! h.list().empty ())
             {
@@ -495,11 +545,11 @@ public:
                 return h.list();
             }
 
-            if (counts_.attempts() > 0)
+            if (state->counts.attempts() > 0)
             {
                 if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
                     "Logic waiting on " <<
-                        counts_.attempts() << " attempts";
+                        state->counts.attempts() << " attempts";
                 return none;
             }
         }
@@ -507,8 +557,8 @@ public:
         // Only proceed if auto connect is enabled and we
         // have less than the desired number of outbound slots
         //
-        if (! config_.autoConnect ||
-            counts_.out_active () >= counts_.out_max ())
+        if (! state->config.autoConnect ||
+            state->counts.out_active () >= state->counts.out_max ())
             return none;
 
         // 2. Use Livecache if:
@@ -516,10 +566,10 @@ public:
         //    Any outbound attempts are in progress
         //
         {
-            livecache_.hops.shuffle();
+            state->livecache.hops.shuffle();
             handout (&h, (&h)+1,
-                livecache_.hops.rbegin(),
-                    livecache_.hops.rend());
+                state->livecache.hops.rbegin(),
+                    state->livecache.hops.rend());
             if (! h.list().empty ())
             {
                 if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
@@ -527,11 +577,11 @@ public:
                     ((h.list().size () > 1) ? "endpoints" : "endpoint");
                 return h.list();
             }
-            else if (counts_.attempts() > 0)
+            else if (state->counts.attempts() > 0)
             {
                 if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
                     "Logic waiting on " <<
-                        counts_.attempts() << " attempts";
+                        state->counts.attempts() << " attempts";
                 return none;
             }
         }
@@ -552,8 +602,8 @@ public:
         // 4. Use Bootcache if:
         //    There are any entries we haven't tried lately
         //
-        for (auto iter (bootcache_.begin());
-            ! h.full() && iter != bootcache_.end(); ++iter)
+        for (auto iter (state->bootcache.begin());
+            ! h.full() && iter != state->bootcache.end(); ++iter)
             h.try_insert (*iter);
 
         if (! h.list().empty ())
@@ -573,7 +623,7 @@ public:
     {
         std::vector<std::pair<Slot::ptr, std::vector<Endpoint>>> result;
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         clock_type::time_point const now = m_clock.now();
         if (m_whenBroadcast <= now)
@@ -583,8 +633,8 @@ public:
             {
                 // build list of active slots
                 std::vector <SlotImp::ptr> slots;
-                slots.reserve (slots_.size());
-                std::for_each (slots_.cbegin(), slots_.cend(),
+                slots.reserve (state->slots.size());
+                std::for_each (state->slots.cbegin(), state->slots.cend(),
                     [&slots](Slots::value_type const& value)
                     {
                         if (value.second->state() == Slot::active)
@@ -613,23 +663,23 @@ public:
             // 2. We have slots
             // 3. We haven't failed the firewalled test
             //
-            if (config_.wantIncoming &&
-                counts_.inboundSlots() > 0)
+            if (state->config.wantIncoming &&
+                state->counts.inboundSlots() > 0)
             {
                 Endpoint ep;
                 ep.hops = 0;
                 ep.address = beast::IP::Endpoint (
                     beast::IP::AddressV4 ()).at_port (
-                        config_.listeningPort);
+                        state->config.listeningPort);
                 for (auto& t : targets)
                     t.insert (ep);
             }
 
             // build sequence of endpoints by hops
-            livecache_.hops.shuffle();
+            state->livecache.hops.shuffle();
             handout (targets.begin(), targets.end(),
-                livecache_.hops.begin(),
-                    livecache_.hops.end());
+                state->livecache.hops.begin(),
+                    state->livecache.hops.end());
 
             // broadcast
             for (auto const& t : targets)
@@ -651,29 +701,30 @@ public:
 
     void once_per_second()
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // Expire the Livecache
-        livecache_.expire ();
+        state->livecache.expire ();
 
         // Expire the recent cache in each slot
-        for (auto const& entry : slots_)
+        for (auto const& entry : state->slots)
             entry.second->expire();
 
         // Expire the recent attempts table
         beast::expire (m_squelches,
             Tuning::recentAttemptDuration);
 
-        bootcache_.periodicActivity ();
+        state->bootcache.periodicActivity ();
     }
 
     //--------------------------------------------------------------------------
 
     // Validate and clean up the list that we received from the slot.
-    void preprocess (SlotImp::ptr const& slot, Endpoints& list)
+    void preprocess (SlotImp::ptr const& slot, Endpoints& list,
+        typename SharedState::Access& state)
     {
         bool neighbor (false);
-        for (auto iter = list.begin(); iter != list.end();)
+        for (auto iter (list.begin()); iter != list.end();)
         {
             Endpoint& ep (*iter);
 
@@ -747,16 +798,16 @@ public:
             " contained " << list.size () <<
             ((list.size() > 1) ? " entries" : " entry");
 
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // The object must exist in our table
-        assert (slots_.find (slot->remote_endpoint ()) !=
-            slots_.end ());
+        assert (state->slots.find (slot->remote_endpoint ()) !=
+            state->slots.end ());
 
         // Must be handshaked!
         assert (slot->state() == Slot::active);
 
-        preprocess (slot, list);
+        preprocess (slot, list, state);
 
         clock_type::time_point const now (m_clock.now());
 
@@ -807,8 +858,8 @@ public:
             // listening test, else we silently drop their messsage
             // since their listening port is misconfigured.
             //
-            livecache_.insert (ep);
-            bootcache_.insert (ep.address);
+            state->livecache.insert (ep);
+            state->bootcache.insert (ep.address);
         }
 
         slot->whenAcceptEndpoints = now + Tuning::secondsPerMessage;
@@ -819,52 +870,52 @@ public:
     void on_legacy_endpoints (IPAddresses const& list)
     {
         // Ignoring them also seems a valid choice.
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
         for (IPAddresses::const_iterator iter (list.begin());
             iter != list.end(); ++iter)
-            bootcache_.insert (*iter);
+            state->bootcache.insert (*iter);
     }
 
-    void remove (SlotImp::ptr const& slot)
+    void remove (SlotImp::ptr const& slot, typename SharedState::Access& state)
     {
-        auto const iter = slots_.find (
-            slot->remote_endpoint ());
+        Slots::iterator const iter (state->slots.find (
+            slot->remote_endpoint ()));
         // The slot must exist in the table
-        assert (iter != slots_.end ());
+        assert (iter != state->slots.end ());
         // Remove from slot by IP table
-        slots_.erase (iter);
+        state->slots.erase (iter);
         // Remove the key if present
         if (slot->public_key () != boost::none)
         {
-            auto const iter = keys_.find (*slot->public_key());
+            Keys::iterator const iter (state->keys.find (*slot->public_key()));
             // Key must exist
-            assert (iter != keys_.end ());
-            keys_.erase (iter);
+            assert (iter != state->keys.end ());
+            state->keys.erase (iter);
         }
         // Remove from connected address table
         {
-            auto const iter (connectedAddresses_.find (
-                slot->remote_endpoint().address()));
+            auto const iter (state->connected_addresses.find (
+                slot->remote_endpoint().at_port (0)));
             // Address must exist
-            assert (iter != connectedAddresses_.end ());
-            connectedAddresses_.erase (iter);
+            assert (iter != state->connected_addresses.end ());
+            state->connected_addresses.erase (iter);
         }
 
         // Update counts
-        counts_.remove (*slot);
+        state->counts.remove (*slot);
     }
 
     void on_closed (SlotImp::ptr const& slot)
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
-        remove (slot);
+        remove (slot, state);
 
         // Mark fixed slot failure
         if (slot->fixed() && ! slot->inbound() && slot->state() != Slot::active)
         {
-            auto iter (fixed_.find (slot->remote_endpoint()));
-            assert (iter != fixed_.end ());
+            auto iter (state->fixed.find (slot->remote_endpoint()));
+            assert (iter != state->fixed.end ());
             iter->second.failure (m_clock.now ());
             if (m_journal.debug) m_journal.debug << beast::leftw (18) <<
                 "Logic fixed " << slot->remote_endpoint () << " failed";
@@ -880,7 +931,7 @@ public:
 
         case Slot::connect:
         case Slot::connected:
-            bootcache_.on_failure (slot->remote_endpoint ());
+            state->bootcache.on_failure (slot->remote_endpoint ());
             // VFALCO TODO If the address exists in the ephemeral/live
             //             endpoint livecache then we should mark the failure
             // as if it didn't pass the listening test. We should also
@@ -905,9 +956,9 @@ public:
 
     void on_failure (SlotImp::ptr const& slot)
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
-        bootcache_.on_failure (slot->remote_endpoint ());
+        state->bootcache.on_failure (slot->remote_endpoint ());
     }
 
     // Insert a set of redirect IP addresses into the Bootcache
@@ -919,10 +970,9 @@ public:
     //--------------------------------------------------------------------------
 
     // Returns `true` if the address matches a fixed slot address
-    // Must have the lock held
-    bool fixed (beast::IP::Endpoint const& endpoint) const
+    bool fixed (beast::IP::Endpoint const& endpoint, typename SharedState::Access& state) const
     {
-        for (auto const& entry : fixed_)
+        for (auto const& entry : state->fixed)
             if (entry.first == endpoint)
                 return true;
         return false;
@@ -930,10 +980,9 @@ public:
 
     // Returns `true` if the address matches a fixed slot address
     // Note that this does not use the port information in the IP::Endpoint
-    // Must have the lock held
-    bool fixed (beast::IP::Address const& address) const
+    bool fixed (beast::IP::Address const& address, typename SharedState::Access& state) const
     {
-        for (auto const& entry : fixed_)
+        for (auto const& entry : state->fixed)
             if (entry.first.address () == address)
                 return true;
         return false;
@@ -948,16 +997,17 @@ public:
     /** Adds eligible Fixed addresses for outbound attempts. */
     template <class Container>
     void get_fixed (std::size_t needed, Container& c,
-        typename ConnectHandouts::Squelches& squelches)
+        typename ConnectHandouts::Squelches& squelches,
+        typename SharedState::Access& state)
     {
         auto const now (m_clock.now());
-        for (auto iter = fixed_.begin ();
-            needed && iter != fixed_.end (); ++iter)
+        for (auto iter = state->fixed.begin ();
+            needed && iter != state->fixed.end (); ++iter)
         {
             auto const& address (iter->first.address());
             if (iter->second.when() <= now && squelches.find(address) ==
                     squelches.end() && std::none_of (
-                        slots_.cbegin(), slots_.cend(),
+                        state->slots.cbegin(), state->slots.cend(),
                     [address](Slots::value_type const& v)
                     {
                         return address == v.first.address();
@@ -967,6 +1017,20 @@ public:
                 c.push_back (iter->first);
                 --needed;
             }
+        }
+    }
+
+    //--------------------------------------------------------------------------
+
+    // Adds slot addresses to the squelched set
+    void squelch_slots (typename SharedState::Access& state)
+    {
+        for (auto const& s : state->slots)
+        {
+            auto const result (m_squelches.insert (
+                s.second->remote_endpoint().address()));
+            if (! result.second)
+                m_squelches.touch (result.first);
         }
     }
 
@@ -990,16 +1054,25 @@ public:
     //
     //--------------------------------------------------------------------------
 
+    // Add one address.
+    // Returns `true` if the address is new.
+    //
+    bool addBootcacheAddress (beast::IP::Endpoint const& address,
+        typename SharedState::Access& state)
+    {
+        return state->bootcache.insert (address);
+    }
+
     // Add a set of addresses.
     // Returns the number of addresses added.
     //
     int addBootcacheAddresses (IPAddresses const& list)
     {
         int count (0);
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
         for (auto addr : list)
         {
-            if (bootcache_.insert (addr))
+            if (addBootcacheAddress (addr, state))
                 ++count;
         }
         return count;
@@ -1012,10 +1085,10 @@ public:
 
         {
             {
-                std::lock_guard<std::recursive_mutex> _(lock_);
-                if (stopping_)
+                typename SharedState::Access state (m_state);
+                if (state->stopping)
                     return;
-                fetchSource_ = source;
+                state->fetchSource = source;
             }
 
             // VFALCO NOTE The fetch is synchronous,
@@ -1024,10 +1097,10 @@ public:
             source->fetch (results, m_journal);
 
             {
-                std::lock_guard<std::recursive_mutex> _(lock_);
-                if (stopping_)
+                typename SharedState::Access state (m_state);
+                if (state->stopping)
                     return;
-                fetchSource_ = nullptr;
+                state->fetchSource = nullptr;
             }
         }
 
@@ -1093,37 +1166,37 @@ public:
 
     void onWrite (beast::PropertyStream::Map& map)
     {
-        std::lock_guard<std::recursive_mutex> _(lock_);
+        typename SharedState::Access state (m_state);
 
         // VFALCO NOTE These ugly casts are needed because
         //             of how std::size_t is declared on some linuxes
         //
-        map ["bootcache"]   = std::uint32_t (bootcache_.size());
-        map ["fixed"]       = std::uint32_t (fixed_.size());
+        map ["bootcache"]   = std::uint32_t (state->bootcache.size());
+        map ["fixed"]       = std::uint32_t (state->fixed.size());
 
         {
             beast::PropertyStream::Set child ("peers", map);
-            writeSlots (child, slots_);
+            writeSlots (child, state->slots);
         }
 
         {
             beast::PropertyStream::Map child ("counts", map);
-            counts_.onWrite (child);
+            state->counts.onWrite (child);
         }
 
         {
             beast::PropertyStream::Map child ("config", map);
-            config_.onWrite (child);
+            state->config.onWrite (child);
         }
 
         {
             beast::PropertyStream::Map child ("livecache", map);
-            livecache_.onWrite (child);
+            state->livecache.onWrite (child);
         }
 
         {
             beast::PropertyStream::Map child ("bootcache", map);
-            bootcache_.onWrite (child);
+            state->bootcache.onWrite (child);
         }
     }
 
@@ -1133,9 +1206,14 @@ public:
     //
     //--------------------------------------------------------------------------
 
+    State const& state () const
+    {
+        return *typename SharedState::ConstAccess (m_state);
+    }
+
     Counts const& counts () const
     {
-        return counts_;
+        return typename SharedState::ConstAccess (m_state)->counts;
     }
 
     static std::string stateString (Slot::State state)
@@ -1162,10 +1240,10 @@ void
 Logic<Checker>::onRedirects (FwdIter first, FwdIter last,
     boost::asio::ip::tcp::endpoint const& remote_address)
 {
-    std::lock_guard<std::recursive_mutex> _(lock_);
+    typename SharedState::Access state (m_state);
     std::size_t n = 0;
     for(;first != last && n < Tuning::maxRedirects; ++first, ++n)
-        bootcache_.insert(
+        state->bootcache.insert(
             beast::IPAddressConversion::from_asio(*first));
     if (n > 0)
         if (m_journal.trace) m_journal.trace << beast::leftw (18) <<

@@ -89,18 +89,6 @@ private:
     const char* str_;
 };
 
-inline bool operator!= (StaticString x, StaticString y)
-{
-    // TODO(tom): could I use x != y here because StaticStrings are supposed to
-    // be unique?
-    return strcmp (x, y);
-}
-
-inline bool operator== (StaticString x, StaticString y)
-{
-    return ! (x != y);
-}
-
 inline bool operator== (std::string const& x, StaticString y)
 {
     return x == y.c_str();
@@ -123,7 +111,7 @@ inline bool operator!= (StaticString x, std::string const& y)
 
 /** \brief Represents a <a HREF="http://www.json.org">JSON</a> value.
  *
- * This class is a discriminated union wrapper that can represent a:
+ * This class is a discriminated union wrapper that can represents a:
  * - signed integer [range: Value::minInt - Value::maxInt]
  * - unsigned integer (range: 0 - Value::maxUInt)
  * - double
@@ -153,12 +141,12 @@ class Value
     friend class ValueIteratorBase;
 
 public:
-    using Members = std::vector<std::string>;
-    using iterator = ValueIterator;
-    using const_iterator = ValueConstIterator;
-    using UInt = Json::UInt;
-    using Int = Json::Int;
-    using ArrayIndex = UInt;
+    typedef std::vector<std::string> Members;
+    typedef ValueIterator iterator;
+    typedef ValueConstIterator const_iterator;
+    typedef Json::UInt UInt;
+    typedef Json::Int Int;
+    typedef UInt ArrayIndex;
 
     static const Value null;
     static const Int minInt;
@@ -192,7 +180,7 @@ private:
     };
 
 public:
-    using ObjectValues = std::map<CZString, Value>;
+    typedef std::map<CZString, Value> ObjectValues;
 
 public:
     /** \brief Create a default Value of the given type.
@@ -246,6 +234,16 @@ public:
 
     ValueType type () const;
 
+    bool operator < ( const Value& other ) const;
+    bool operator <= ( const Value& other ) const;
+    bool operator >= ( const Value& other ) const;
+    bool operator > ( const Value& other ) const;
+
+    bool operator == ( const Value& other ) const;
+    bool operator != ( const Value& other ) const;
+
+    int compare ( const Value& other );
+
     const char* asCString () const;
     std::string asString () const;
     Int asInt () const;
@@ -253,8 +251,6 @@ public:
     double asDouble () const;
     bool asBool () const;
 
-    /** isNull() tests to see if this field is null.  Don't use this method to
-        test for emptiness: use empty(). */
     bool isNull () const;
     bool isBool () const;
     bool isInt () const;
@@ -271,10 +267,12 @@ public:
     /// Number of values in array or object
     UInt size () const;
 
-    /** Returns false if this is an empty array, empty object, empty string,
-        or null. */
-    explicit
-    operator bool() const;
+    /// \brief Return true if empty array, empty object, or null;
+    /// otherwise, false.
+    bool empty () const;
+
+    /// Return isNull()
+    bool operator! () const;
 
     /// Remove all object members and array elements.
     /// \pre type() is arrayValue, objectValue, or nullValue
@@ -371,9 +369,6 @@ public:
     iterator begin ();
     iterator end ();
 
-    friend bool operator== (const Value&, const Value&);
-    friend bool operator< (const Value&, const Value&);
-
 private:
     Value& resolveReference ( const char* key,
                               bool isStatic );
@@ -391,34 +386,6 @@ private:
     ValueType type_ : 8;
     int allocated_ : 1;     // Notes: if declared as bool, bitfield is useless.
 };
-
-bool operator== (const Value&, const Value&);
-
-inline
-bool operator!= (const Value& x, const Value& y)
-{
-    return ! (x == y);
-}
-
-bool operator< (const Value&, const Value&);
-
-inline
-bool operator<= (const Value& x, const Value& y)
-{
-    return ! (y < x);
-}
-
-inline
-bool operator> (const Value& x, const Value& y)
-{
-    return y < x;
-}
-
-inline
-bool operator>= (const Value& x, const Value& y)
-{
-    return ! (x < y);
-}
 
 /** \brief Experimental do not use: Allocator to customize member name and string value memory management done by Value.
  *
@@ -447,9 +414,9 @@ public:
 class ValueIteratorBase
 {
 public:
-    using size_t = unsigned int;
-    using difference_type = int;
-    using SelfType = ValueIteratorBase;
+    typedef unsigned int size_t;
+    typedef int difference_type;
+    typedef ValueIteratorBase SelfType;
 
     ValueIteratorBase ();
 
@@ -505,11 +472,11 @@ class ValueConstIterator : public ValueIteratorBase
 {
     friend class Value;
 public:
-    using size_t = unsigned int;
-    using difference_type = int;
-    using reference = const Value&;
-    using pointer = const Value*;
-    using SelfType = ValueConstIterator;
+    typedef unsigned int size_t;
+    typedef int difference_type;
+    typedef const Value& reference;
+    typedef const Value* pointer;
+    typedef ValueConstIterator SelfType;
 
     ValueConstIterator ();
 private:
@@ -558,11 +525,11 @@ class ValueIterator : public ValueIteratorBase
 {
     friend class Value;
 public:
-    using size_t = unsigned int;
-    using difference_type = int;
-    using reference = Value&;
-    using pointer = Value*;
-    using SelfType = ValueIterator;
+    typedef unsigned int size_t;
+    typedef int difference_type;
+    typedef Value& reference;
+    typedef Value* pointer;
+    typedef ValueIterator SelfType;
 
     ValueIterator ();
     ValueIterator ( const ValueConstIterator& other );

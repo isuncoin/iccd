@@ -25,7 +25,6 @@
 #ifndef RIPPLE_BASICS_STRHEX_H_INCLUDED
 #define RIPPLE_BASICS_STRHEX_H_INCLUDED
 
-#include <cassert>
 #include <string>
 
 namespace ripple {
@@ -64,18 +63,22 @@ charUnHex (char c)
 
 // NIKB TODO cleanup this function and reduce the need for the many overloads
 //           it has in various places.
-template<class FwdIt>
-std::string strHex (FwdIt first, int size)
+template<class Iterator>
+std::string strHex (Iterator first, int iSize)
 {
-    std::string s;
-    s.resize (size * 2);
-    for (int i = 0; i < size; i++)
+    std::string strDst;
+
+    strDst.resize (iSize * 2);
+
+    for (int i = 0; i < iSize; i++)
     {
         unsigned char c = *first++;
-        s[i * 2]     = charHex (c >> 4);
-        s[i * 2 + 1] = charHex (c & 15);
+
+        strDst[i * 2]     = charHex (c >> 4);
+        strDst[i * 2 + 1] = charHex (c & 15);
     }
-    return s;
+
+    return strDst;
 }
 
 }

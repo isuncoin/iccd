@@ -52,9 +52,7 @@ makeSharedValue (SSL* ssl, beast::Journal journal);
 
 /** Build a TMHello protocol message. */
 protocol::TMHello
-buildHello (uint256 const& sharedValue,
-    beast::IP::Address public_ip,
-    beast::IP::Endpoint remote, Application& app);
+buildHello (uint256 const& sharedValue, Application& app);
 
 /** Insert HTTP headers based on the TMHello protocol message. */
 void
@@ -72,8 +70,6 @@ parseHello (beast::http::message const& m, beast::Journal journal);
 */
 std::pair<RippleAddress, bool>
 verifyHello (protocol::TMHello const& h, uint256 const& sharedValue,
-    beast::IP::Address public_ip,
-    beast::IP::Endpoint remote,
     beast::Journal journal, Application& app);
 
 /** Parse a set of protocol versions.

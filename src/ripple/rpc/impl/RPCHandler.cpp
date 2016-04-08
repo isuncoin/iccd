@@ -18,12 +18,10 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
 #include <ripple/rpc/RPCHandler.h>
 #include <ripple/rpc/Yield.h>
 #include <ripple/rpc/impl/Tuning.h>
 #include <ripple/rpc/impl/Handler.h>
-#include <ripple/app/main/Application.h>
 #include <ripple/app/ledger/LedgerMaster.h>
 #include <ripple/app/misc/NetworkOPs.h>
 #include <ripple/basics/Log.h>
@@ -34,9 +32,7 @@
 #include <ripple/net/InfoSub.h>
 #include <ripple/net/RPCErr.h>
 #include <ripple/protocol/JsonFields.h>
-#include <ripple/resource/Fees.h>
 #include <ripple/server/Role.h>
-#include <ripple/resource/Fees.h>
 
 namespace ripple {
 namespace RPC {
@@ -116,10 +112,10 @@ error_code_i fillHandler (Context& context,
     {
         // VFALCO NOTE Should we also add up the jtRPC jobs?
         //
-        int jc = context.app.getJobQueue ().getJobCountGE (jtCLIENT);
+        int jc = getApp().getJobQueue ().getJobCountGE (jtCLIENT);
         if (jc > Tuning::maxJobQueueClients)
         {
-            JLOG (context.j.debug) << "Too busy for command: " << jc;
+            WriteLog (lsDEBUG, RPCHandler) << "Too busy for command: " << jc;
             return rpcTOO_BUSY;
         }
     }
@@ -129,8 +125,8 @@ error_code_i fillHandler (Context& context,
 
     std::string strCommand  = context.params[jss::command].asString ();
 
-    JLOG (context.j.trace) << "COMMAND:" << strCommand;
-    JLOG (context.j.trace) << "REQUEST:" << context.params;
+    WriteLog (lsTRACE, RPCHandler) << "COMMAND:" << strCommand;
+    WriteLog (lsTRACE, RPCHandler) << "REQUEST:" << context.params;
 
     auto handler = getHandler(strCommand);
 
@@ -143,35 +139,35 @@ error_code_i fillHandler (Context& context,
     if ((handler->condition_ & NEEDS_NETWORK_CONNECTION) &&
         (context.netOps.getOperatingMode () < NetworkOPs::omSYNCING))
     {
-        JLOG (context.j.info)
+        WriteLog (lsINFO, RPCHandler)
             << "Insufficient network mode for RPC: "
             << context.netOps.strOperatingMode ();
 
         return rpcNO_NETWORK;
     }
 
-    if (!context.app.config().RUN_STANDALONE &&
+    if (! getConfig ().RUN_STANDALONE &&
         handler->condition_ & NEEDS_CURRENT_LEDGER)
     {
-        if (context.ledgerMaster.getValidatedLedgerAge () >
+        if (getApp ().getLedgerMaster ().getValidatedLedgerAge () >
             Tuning::maxValidatedLedgerAge)
         {
             return rpcNO_CURRENT;
         }
 
-        auto const cID = context.ledgerMaster.getCurrentLedgerIndex ();
-        auto const vID = context.ledgerMaster.getValidLedgerIndex ();
+        auto const cID = context.netOps.getCurrentLedgerID ();
+        auto const vID = context.netOps.getValidatedSeq ();
 
         if (cID + 10 < vID)
         {
-            JLOG (context.j.debug) << "Current ledger ID(" << cID <<
+            WriteLog (lsDEBUG, RPCHandler) << "Current ledger ID(" << cID <<
                 ") is less than validated ledger ID(" << vID << ")";
             return rpcNO_CURRENT;
         }
     }
 
     if ((handler->condition_ & NEEDS_CLOSED_LEDGER) &&
-        !context.ledgerMaster.getClosedLedger ())
+        !context.netOps.getClosedLedger ())
     {
         return rpcNO_CLOSED;
     }
@@ -186,13 +182,13 @@ Status callMethod (
 {
     try
     {
-        auto v = context.app.getJobQueue().getLoadEventAP(
+        auto v = getApp().getJobQueue().getLoadEventAP(
             jtGENERIC, "cmd:" + name);
         return method (context, result);
     }
     catch (std::exception& e)
     {
-        JLOG (context.j.info) << "Caught throw: " << e.what ();
+        WriteLog (lsINFO, RPCHandler) << "Caught throw: " << e.what ();
 
         if (context.loadType == Resource::feeReferenceRPC)
             context.loadType = Resource::feeExceptionRPC;
@@ -209,7 +205,7 @@ void getResult (
     auto&& result = Json::addObject (object, jss::result);
     if (auto status = callMethod (context, method, name, result))
     {
-        JLOG (context.j.debug) << "rpcError: " << status.toString();
+        WriteLog (lsDEBUG, RPCErr) << "rpcError: " << status.toString();
         result[jss::status] = jss::error;
         result[jss::request] = context.params;
     }

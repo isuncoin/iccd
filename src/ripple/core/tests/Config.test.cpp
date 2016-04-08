@@ -18,7 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/core/LoadFeeTrack.h>
+#include <ripple/core/impl/LoadFeeTrackImp.h>
 #include <ripple/core/Config.h>
 #include <ripple/core/ConfigSections.h>
 #include <ripple/basics/TestSuite.h>
@@ -94,8 +94,8 @@ pool.ntp.org
 
 # Where to find some other servers speaking the Ripple protocol.
 #
-[ips]
-r.ripple.com 51235
+#[ips]
+#r.ripple.com 51235
 
 # The latest validators can be obtained from
 # https://ripple.com/ripple.txt

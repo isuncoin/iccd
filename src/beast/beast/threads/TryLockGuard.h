@@ -26,7 +26,7 @@ template <typename Mutex>
 class TryLockGuard
 {
 public:
-    using MutexType = Mutex;
+    typedef Mutex MutexType;
 
     explicit TryLockGuard (Mutex const& mutex)
         : m_mutex (mutex)

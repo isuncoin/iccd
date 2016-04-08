@@ -21,13 +21,12 @@
 
 #include <ripple/app/misc/SHAMapStoreImp.h>
 #include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/ledger/TransactionMaster.h>
 #include <ripple/app/main/Application.h>
 #include <ripple/core/ConfigSections.h>
 #include <boost/format.hpp>
+#include <beast/cxx14/memory.h> // <memory>
 #include <boost/format.hpp>
 #include <boost/optional.hpp>
-#include <memory>
 
 namespace ripple {
 void SHAMapStoreImp::SavedStateDB::init (BasicConfig const& config,
@@ -72,7 +71,7 @@ void SHAMapStoreImp::SavedStateDB::init (BasicConfig const& config,
                 "INSERT INTO DbState VALUES (1, '', '', 0);";
     }
 
-
+    
     {
         boost::optional<std::int64_t> countO;
         session_ <<
@@ -161,11 +160,7 @@ SHAMapStoreImp::SavedStateDB::setLastRotated (LedgerIndex seq)
             ;
 }
 
-//------------------------------------------------------------------------------
-
-SHAMapStoreImp::SHAMapStoreImp (
-        Application& app,
-        Setup const& setup,
+SHAMapStoreImp::SHAMapStoreImp (Setup const& setup,
         Stoppable& parent,
         NodeStore::Scheduler& scheduler,
         beast::Journal journal,
@@ -173,7 +168,6 @@ SHAMapStoreImp::SHAMapStoreImp (
         TransactionMaster& transactionMaster,
         BasicConfig const& config)
     : SHAMapStore (parent)
-    , app_ (app)
     , setup_ (setup)
     , scheduler_ (scheduler)
     , journal_ (journal)
@@ -233,7 +227,8 @@ SHAMapStoreImp::makeDatabase (std::string const& name,
     else
     {
         db = NodeStore::Manager::instance().make_Database (name, scheduler_, nodeStoreJournal_,
-                readThreads, setup_.nodeDatabase);
+                readThreads, setup_.nodeDatabase,
+                setup_.ephemeralNodeDatabase);
     }
 
     return db;
@@ -251,7 +246,7 @@ SHAMapStoreImp::onLedgerClosed (Ledger::pointer validatedLedger)
 
 bool
 SHAMapStoreImp::copyNode (std::uint64_t& nodeCount,
-        SHAMapAbstractNode const& node)
+        SHAMapTreeNode const& node)
 {
     // Copy a single record from node to database_
     database_->fetchNode (node.getNodeHash());
@@ -268,12 +263,12 @@ void
 SHAMapStoreImp::run()
 {
     LedgerIndex lastRotated = state_db_.getState().lastRotated;
-    netOPs_ = &app_.getOPs();
-    ledgerMaster_ = &app_.getLedgerMaster();
-    fullBelowCache_ = &app_.family().fullbelow();
-    treeNodeCache_ = &app_.family().treecache();
-    transactionDb_ = &app_.getTxnDB();
-    ledgerDb_ = &app_.getLedgerDB();
+    netOPs_ = &getApp().getOPs();
+    ledgerMaster_ = &getApp().getLedgerMaster();
+    fullBelowCache_ = &getApp().family().fullbelow();
+    treeNodeCache_ = &getApp().family().treecache();
+    transactionDb_ = &getApp().getTxnDB();
+    ledgerDb_ = &getApp().getLedgerDB();
 
     if (setup_.advisoryDelete)
         canDelete_ = state_db_.getCanDelete ();
@@ -283,21 +278,20 @@ SHAMapStoreImp::run()
         healthy_ = true;
         validatedLedger_.reset();
 
+        std::unique_lock <std::mutex> lock (mutex_);
+        if (stop_)
         {
-            std::unique_lock <std::mutex> lock (mutex_);
-            if (stop_)
-            {
-                stopped();
-                return;
-            }
-            cond_.wait (lock);
-            if (newLedger_)
-                validatedLedger_ = std::move (newLedger_);
-            else
-                continue;
+            stopped();
+            return;
         }
+        cond_.wait (lock);
+        if (newLedger_)
+            validatedLedger_ = std::move (newLedger_);
+        else
+            continue;
+        lock.unlock();
 
-        LedgerIndex validatedSeq = validatedLedger_->info().seq;
+        LedgerIndex validatedSeq = validatedLedger_->getLedgerSeq();
         if (!lastRotated)
         {
             lastRotated = validatedSeq;
@@ -338,7 +332,7 @@ SHAMapStoreImp::run()
             }
 
             std::uint64_t nodeCount = 0;
-            validatedLedger_->stateMap().snapShot (
+            validatedLedger_->peekAccountStateMap()->snapShot (
                     false)->visitNodes (
                     std::bind (&SHAMapStoreImp::copyNode, this,
                     std::ref(nodeCount), std::placeholders::_1));
@@ -498,8 +492,14 @@ SHAMapStoreImp::makeDatabaseRotating (std::string const& name,
         std::shared_ptr <NodeStore::Backend> writableBackend,
         std::shared_ptr <NodeStore::Backend> archiveBackend) const
 {
+    std::unique_ptr <NodeStore::Backend> fastBackend (
+        (setup_.ephemeralNodeDatabase.size() > 0)
+            ? NodeStore::Manager::instance().make_Backend (setup_.ephemeralNodeDatabase,
+            scheduler_, journal_) : nullptr);
+
     return NodeStore::Manager::instance().make_DatabaseRotating ("NodeStore.main", scheduler_,
-            readThreads, writableBackend, archiveBackend, nodeStoreJournal_);
+            readThreads, writableBackend, archiveBackend,
+            std::move (fastBackend), nodeStoreJournal_);
 }
 
 void
@@ -672,35 +672,26 @@ setup_SHAMapStore (Config const& c)
 {
     SHAMapStore::Setup setup;
 
-    // Get existing settings and add some default values if not specified:
-    setup.nodeDatabase = c.section (ConfigSection::nodeDatabase ());
-
-    // These two parameters apply only to RocksDB. We want to give them sensible
-    // defaults if no values are specified.
-    if (!setup.nodeDatabase.exists ("cache_mb"))
-        setup.nodeDatabase.set ("cache_mb", std::to_string (c.getSize (siHashNodeDBCache)));
-
-    if (!setup.nodeDatabase.exists ("filter_bits") && (c.NODE_SIZE >= 2))
-        setup.nodeDatabase.set ("filter_bits", "10");
-
-    get_if_exists (setup.nodeDatabase, "online_delete", setup.deleteInterval);
+    auto const& sec = c.section (ConfigSection::nodeDatabase ());
+    get_if_exists (sec, "online_delete", setup.deleteInterval);
 
     if (setup.deleteInterval)
-        get_if_exists (setup.nodeDatabase, "advisory_delete", setup.advisoryDelete);
+        get_if_exists (sec, "advisory_delete", setup.advisoryDelete);
 
     setup.ledgerHistory = c.LEDGER_HISTORY;
+    setup.nodeDatabase = c[ConfigSection::nodeDatabase ()];
+    setup.ephemeralNodeDatabase = c[ConfigSection::tempNodeDatabase ()];
     setup.databasePath = c.legacy("database_path");
 
-    get_if_exists (setup.nodeDatabase, "delete_batch", setup.deleteBatch);
-    get_if_exists (setup.nodeDatabase, "backOff", setup.backOff);
-    get_if_exists (setup.nodeDatabase, "age_threshold", setup.ageThreshold);
+    get_if_exists (sec, "delete_batch", setup.deleteBatch);
+    get_if_exists (sec, "backOff", setup.backOff);
+    get_if_exists (sec, "age_threshold", setup.ageThreshold);
 
     return setup;
 }
 
 std::unique_ptr<SHAMapStore>
-make_SHAMapStore (Application& app,
-        SHAMapStore::Setup const& s,
+make_SHAMapStore (SHAMapStore::Setup const& s,
         beast::Stoppable& parent,
         NodeStore::Scheduler& scheduler,
         beast::Journal journal,
@@ -708,7 +699,7 @@ make_SHAMapStore (Application& app,
         TransactionMaster& transactionMaster,
         BasicConfig const& config)
 {
-    return std::make_unique<SHAMapStoreImp>(app, s, parent, scheduler,
+    return std::make_unique<SHAMapStoreImp>(s, parent, scheduler,
             journal, nodeStoreJournal, transactionMaster,
             config);
 }

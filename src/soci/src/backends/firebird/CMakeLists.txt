@@ -11,6 +11,9 @@
 
 soci_backend(Firebird
   DEPENDS Firebird
-  DESCRIPTION "SOCI backend for Firebird"
+  HEADERS soci-firebird.h common.h
+  DESCRIPTION "SOCI backend for Firebird database engine"
   AUTHORS "Rafał Bobrowski"
   MAINTAINERS "Viacheslav Naydenov")
+
+add_subdirectory(test)

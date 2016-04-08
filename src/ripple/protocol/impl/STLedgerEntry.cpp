@@ -22,29 +22,15 @@
 #include <ripple/json/to_string.h>
 #include <ripple/protocol/Indexes.h>
 #include <ripple/protocol/JsonFields.h>
+#include <ripple/protocol/STAccount.h>
 #include <ripple/protocol/STLedgerEntry.h>
 #include <boost/format.hpp>
 
 namespace ripple {
 
-STLedgerEntry::STLedgerEntry (Keylet const& k)
-    :  STObject(sfLedgerEntry)
-    , key_ (k.key)
-    , type_ (k.type)
-    , mMutable (true)
-{
-    mFormat =
-        LedgerFormats::getInstance().findByType (type_);
-    if (mFormat == nullptr)
-        throw std::runtime_error ("invalid ledger entry type");
-    set (mFormat->elements);
-    setFieldU16 (sfLedgerEntryType,
-        static_cast <std::uint16_t> (mFormat->getType ()));
-}
-
 STLedgerEntry::STLedgerEntry (
     SerialIter& sit, uint256 const& index)
-    : STObject (sfLedgerEntry), key_ (index), mMutable (true)
+    : STObject (sfLedgerEntry), mIndex (index), mMutable (true)
 {
     set (sit);
     setSLEType ();
@@ -52,16 +38,17 @@ STLedgerEntry::STLedgerEntry (
 
 STLedgerEntry::STLedgerEntry (
     const Serializer& s, uint256 const& index)
-    : STObject (sfLedgerEntry), key_ (index), mMutable (true)
+    : STObject (sfLedgerEntry), mIndex (index), mMutable (true)
 {
-    SerialIter sit (s.slice());
+    // we know 's' isn't going away
+    SerialIter sit (const_cast<Serializer&> (s));
     set (sit);
     setSLEType ();
 }
 
 STLedgerEntry::STLedgerEntry (
     const STObject & object, uint256 const& index)
-    : STObject (object), key_(index),  mMutable (true)
+    : STObject (object), mIndex(index),  mMutable (true)
 {
     setSLEType ();
 }
@@ -74,7 +61,7 @@ void STLedgerEntry::setSLEType ()
     if (mFormat == nullptr)
         throw std::runtime_error ("invalid ledger entry type");
 
-    type_ = mFormat->getType ();
+    mType = mFormat->getType ();
     if (!setType (mFormat->elements))
     {
         WriteLog (lsWARNING, SerializedLedger)
@@ -84,10 +71,30 @@ void STLedgerEntry::setSLEType ()
     }
 }
 
+STLedgerEntry::STLedgerEntry (LedgerEntryType type, uint256 const& index) :
+    STObject (sfLedgerEntry), mIndex (index), mType (type), mMutable (true)
+{
+    mFormat = LedgerFormats::getInstance().findByType (type);
+
+    if (mFormat == nullptr)
+        throw std::runtime_error ("invalid ledger entry type");
+
+    set (mFormat->elements);
+    setFieldU16 (sfLedgerEntryType,
+        static_cast <std::uint16_t> (mFormat->getType ()));
+}
+
+STLedgerEntry::pointer STLedgerEntry::getMutable () const
+{
+    STLedgerEntry::pointer ret = std::make_shared<STLedgerEntry> (std::cref (*this));
+    ret->mMutable = true;
+    return ret;
+}
+
 std::string STLedgerEntry::getFullText () const
 {
     std::string ret = "\"";
-    ret += to_string (key_);
+    ret += to_string (mIndex);
     ret += "\" = { ";
     ret += mFormat->getName ();
     ret += ", ";
@@ -99,7 +106,7 @@ std::string STLedgerEntry::getFullText () const
 std::string STLedgerEntry::getText () const
 {
     return str (boost::format ("{ %s, %s }")
-                % to_string (key_)
+                % to_string (mIndex)
                 % STObject::getText ());
 }
 
@@ -107,27 +114,27 @@ Json::Value STLedgerEntry::getJson (int options) const
 {
     Json::Value ret (STObject::getJson (options));
 
-    ret[jss::index] = to_string (key_);
+    ret[jss::index] = to_string (mIndex);
 
     return ret;
 }
 
-bool STLedgerEntry::isThreadedType () const
+bool STLedgerEntry::isThreadedType ()
 {
     return getFieldIndex (sfPreviousTxnID) != -1;
 }
 
-bool STLedgerEntry::isThreaded () const
+bool STLedgerEntry::isThreaded ()
 {
     return isFieldPresent (sfPreviousTxnID);
 }
 
-uint256 STLedgerEntry::getThreadedTransaction () const
+uint256 STLedgerEntry::getThreadedTransaction ()
 {
     return getFieldH256 (sfPreviousTxnID);
 }
 
-std::uint32_t STLedgerEntry::getThreadedLedger () const
+std::uint32_t STLedgerEntry::getThreadedLedger ()
 {
     return getFieldU32 (sfPreviousTxnLgrSeq);
 }
@@ -150,6 +157,65 @@ bool STLedgerEntry::thread (uint256 const& txID, std::uint32_t ledgerSeq,
     setFieldH256 (sfPreviousTxnID, txID);
     setFieldU32 (sfPreviousTxnLgrSeq, ledgerSeq);
     return true;
+}
+
+bool STLedgerEntry::hasOneOwner ()
+{
+    return (mType != ltACCOUNT_ROOT) && (getFieldIndex (sfAccount) != -1);
+}
+
+bool STLedgerEntry::hasTwoOwners ()
+{
+    return mType == ltRIPPLE_STATE;
+}
+
+RippleAddress STLedgerEntry::getOwner ()
+{
+    return getFieldAccount (sfAccount);
+}
+
+RippleAddress STLedgerEntry::getFirstOwner ()
+{
+    return RippleAddress::createAccountID (getFieldAmount (sfLowLimit).getIssuer ());
+}
+
+RippleAddress STLedgerEntry::getSecondOwner ()
+{
+    return RippleAddress::createAccountID (getFieldAmount (sfHighLimit).getIssuer ());
+}
+
+std::vector<uint256> STLedgerEntry::getOwners ()
+{
+    std::vector<uint256> owners;
+    Account account;
+
+    for (int i = 0, fields = getCount (); i < fields; ++i)
+    {
+        auto const& fc = getFieldSType (i);
+
+        if ((fc == sfAccount) || (fc == sfOwner))
+        {
+            auto entry = dynamic_cast<const STAccount*> (peekAtPIndex (i));
+
+            if ((entry != nullptr) && entry->getValueH160 (account))
+                owners.push_back (getAccountRootIndex (account));
+        }
+
+        if ((fc == sfLowLimit) || (fc == sfHighLimit))
+        {
+            auto entry = dynamic_cast<const STAmount*> (peekAtPIndex (i));
+
+            if ((entry != nullptr))
+            {
+                auto issuer = entry->getIssuer ();
+
+                if (issuer.isNonZero ())
+                    owners.push_back (getAccountRootIndex (issuer));
+            }
+        }
+    }
+
+    return owners;
 }
 
 } // ripple

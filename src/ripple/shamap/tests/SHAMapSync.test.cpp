@@ -27,6 +27,7 @@
 #include <openssl/rand.h> // DEPRECATED
 
 namespace ripple {
+namespace shamap {
 namespace tests {
 
 #ifdef BEAST_DEBUG
@@ -42,8 +43,7 @@ public:
 
         for (int d = 0; d < 3; ++d) s.add32 (rand ());
 
-        return std::make_shared<SHAMapItem>(
-            s.getSHA512Half(), s.peekData ());
+        return std::make_shared<SHAMapItem> (to256 (s.getRIPEMD160 ()), s.peekData ());
     }
 
     bool confuseMap (SHAMap& map, int count)
@@ -57,7 +57,7 @@ public:
         for (int i = 0; i < count; ++i)
         {
             std::shared_ptr<SHAMapItem> item = makeRandomAS ();
-            items.push_back (item->key());
+            items.push_back (item->getTag ());
 
             if (!map.addItem (*item, false, false))
             {
@@ -99,9 +99,10 @@ public:
         srand (seed);
 
         beast::Journal const j;                            // debug journal
+
         TestFamily f(j);
-        SHAMap source (SHAMapType::FREE, f);
-        SHAMap destination (SHAMapType::FREE, f);
+        SHAMap source (SHAMapType::FREE, f, j);
+        SHAMap destination (SHAMapType::FREE, f, j);
 
         int items = 10000;
         for (int i = 0; i < items; ++i)
@@ -225,4 +226,5 @@ public:
 BEAST_DEFINE_TESTSUITE(sync,shamap,ripple);
 
 } // tests
+} // shamap
 } // ripple

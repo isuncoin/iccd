@@ -25,8 +25,8 @@
 #include <boost/asio/detail/handler_invoke_helpers.hpp>
 
 #include <functional>
-#include <type_traits>
-#include <utility>
+#include <beast/cxx14/type_traits.h> // <type_traits>
+#include <beast/cxx14/utility.h> // <utility>
 
 namespace beast {
 namespace asio {
@@ -41,7 +41,7 @@ template <class DeducedHandler, class... Args>
 class bound_handler
 {
 private:
-    using args_type = std::tuple <std::decay_t <Args>...>;
+    typedef std::tuple <std::decay_t <Args>...> args_type;
 
     std::decay_t <DeducedHandler> m_handler;
     args_type m_args;
@@ -54,7 +54,7 @@ private:
     }
 
 public:
-    using result_type = void;
+    typedef void result_type;
 
     explicit
     bound_handler (DeducedHandler&& handler, Args&&... args)

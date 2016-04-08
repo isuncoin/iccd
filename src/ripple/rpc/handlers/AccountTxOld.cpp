@@ -18,17 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/app/misc/Transaction.h>
-#include <ripple/ledger/ReadView.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/resource/Fees.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/LookupLedger.h>
 #include <ripple/server/Role.h>
 
 namespace ripple {
@@ -45,6 +34,7 @@ namespace ripple {
 // }
 Json::Value doAccountTxOld (RPC::Context& context)
 {
+    RippleAddress   raAccount;
     std::uint32_t offset
             = context.params.isMember (jss::offset)
             ? context.params[jss::offset].asUInt () : 0;
@@ -60,15 +50,13 @@ Json::Value doAccountTxOld (RPC::Context& context)
     std::uint32_t   uLedgerMax;
     std::uint32_t   uValidatedMin;
     std::uint32_t   uValidatedMax;
-    bool bValidated  = context.ledgerMaster.getValidatedRange (
+    bool bValidated  = context.netOps.getValidatedRange (
         uValidatedMin, uValidatedMax);
 
     if (!context.params.isMember (jss::account))
         return rpcError (rpcINVALID_PARAMS);
 
-    auto const raAccount = parseBase58<AccountID>(
-        context.params[jss::account].asString());
-    if (! raAccount)
+    if (!raAccount.setAccountID (context.params[jss::account].asString ()))
         return rpcError (rpcACT_MALFORMED);
 
     if (offset > 3000)
@@ -114,20 +102,13 @@ Json::Value doAccountTxOld (RPC::Context& context)
     }
     else
     {
-        std::shared_ptr<ReadView const> ledger;
-        auto ret = RPC::lookupLedger (ledger, context);
+        Ledger::pointer l;
+        Json::Value ret = RPC::lookupLedger (context.params, l, context.netOps);
 
-        if (!ledger)
+        if (!l)
             return ret;
 
-        if (! ret[jss::validated].asBool() ||
-            (ledger->info().seq > uValidatedMax) ||
-            (ledger->info().seq < uValidatedMin))
-        {
-            return rpcError (rpcLGR_NOT_VALIDATED);
-        }
-
-        uLedgerMin = uLedgerMax = ledger->info().seq;
+        uLedgerMin = uLedgerMax = l->getLedgerSeq ();
     }
 
     int count = 0;
@@ -140,13 +121,13 @@ Json::Value doAccountTxOld (RPC::Context& context)
 
         Json::Value ret (Json::objectValue);
 
-        ret[jss::account] = context.app.accountIDCache().toBase58(*raAccount);
+        ret[jss::account] = raAccount.humanAccountID ();
         Json::Value& jvTxns = (ret[jss::transactions] = Json::arrayValue);
 
         if (bBinary)
         {
             auto txns = context.netOps.getAccountTxsB (
-                *raAccount, uLedgerMin, uLedgerMax, bDescending, offset, limit,
+                raAccount, uLedgerMin, uLedgerMax, bDescending, offset, limit,
                 context.role == Role::ADMIN);
 
             for (auto it = txns.begin (), end = txns.end (); it != end; ++it)
@@ -168,7 +149,7 @@ Json::Value doAccountTxOld (RPC::Context& context)
         else
         {
             auto txns = context.netOps.getAccountTxs (
-                *raAccount, uLedgerMin, uLedgerMax, bDescending, offset, limit,
+                raAccount, uLedgerMin, uLedgerMax, bDescending, offset, limit,
                 context.role == Role::ADMIN);
 
             for (auto it = txns.begin (), end = txns.end (); it != end; ++it)

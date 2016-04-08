@@ -20,7 +20,6 @@
 #ifndef RIPPLE_CORE_JOBTYPEDATA_H_INCLUDED
 #define RIPPLE_CORE_JOBTYPEDATA_H_INCLUDED
 
-#include <ripple/basics/Log.h>
 #include <ripple/core/JobTypeInfo.h>
 
 namespace ripple
@@ -51,10 +50,9 @@ public:
     beast::insight::Event dequeue;
     beast::insight::Event execute;
 
-    JobTypeData (JobTypeInfo const& info_,
-            beast::insight::Collector::ptr const& collector, Logs& logs) noexcept
-        : m_load (logs.journal ("LoadMonitor"))
-        , m_collector (collector)
+    explicit JobTypeData (JobTypeInfo const& info_,
+            beast::insight::Collector::ptr const& collector) noexcept
+        : m_collector (collector)
         , info (info_)
         , waiting (0)
         , running (0)

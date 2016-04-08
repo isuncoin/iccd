@@ -21,14 +21,12 @@
 #include <ripple/app/main/Application.h>
 #include <ripple/app/misc/AmendmentTable.h>
 #include <ripple/app/misc/Validations.h>
-#include <ripple/core/DatabaseCon.h>
+#include <ripple/app/data/DatabaseCon.h>
 #include <ripple/core/ConfigSections.h>
 #include <ripple/protocol/JsonFields.h>
-#include <ripple/protocol/TxFlags.h>
 #include <boost/format.hpp>
 #include <boost/tokenizer.hpp>
 #include <algorithm>
-#include <mutex>
 
 namespace ripple {
 /** Track the list of "amendments"
@@ -37,24 +35,28 @@ namespace ripple {
    Amendments are proposed and then adopted or rejected by the network. An
    Amendment is uniquely identified by its AmendmentID, a 256-bit key.
 */
-
+template<class AppApiFacade>
 class AmendmentTableImpl final : public AmendmentTable
 {
 protected:
-    using amendmentMap_t = hash_map<uint256, AmendmentState>;
-    using amendmentList_t = hash_set<uint256>;
+    typedef hash_map<uint256, AmendmentState> amendmentMap_t;
+    typedef hash_set<uint256> amendmentList_t;
 
-    std::mutex mLock;
+    typedef RippleMutex LockType;
+    typedef std::lock_guard <LockType> ScopedLockType;
+    LockType mLock;
 
     amendmentMap_t m_amendmentMap;
-    std::uint32_t m_lastUpdateSeq;
-
     std::chrono::seconds m_majorityTime; // Seconds an amendment must hold a majority
     int mMajorityFraction;  // 256 = 100%
+    core::Clock::time_point m_firstReport; // close time of first majority report
+    core::Clock::time_point m_lastReport;  // close time of most recent majority report
     beast::Journal m_journal;
+    AppApiFacade m_appApiFacade;
 
     AmendmentState& getCreate (uint256 const& amendment);
     AmendmentState* getExisting (uint256 const& amendment);
+    bool shouldEnable (std::uint32_t closeTime, const AmendmentState& fs);
     void setJson (Json::Value& v, const AmendmentState&);
 
 public:
@@ -62,9 +64,10 @@ public:
         std::chrono::seconds majorityTime,
         int majorityFraction,
         beast::Journal journal)
-        : m_lastUpdateSeq (0)
-        , m_majorityTime (majorityTime)
+        : m_majorityTime (majorityTime)
         , mMajorityFraction (majorityFraction)
+        , m_firstReport (0)
+        , m_lastReport (0)
         , m_journal (journal)
     {
     }
@@ -87,28 +90,19 @@ public:
     void setEnabled (const std::vector<uint256>& amendments) override;
     void setSupported (const std::vector<uint256>& amendments) override;
 
+    void reportValidations (const AmendmentSet&) override;
+
     Json::Value getJson (int) override;
     Json::Value getJson (uint256 const&) override;
 
-    bool needValidatedLedger (LedgerIndex seq) override;
-
-    void doValidatedLedger (LedgerIndex seq,
-        enabledAmendments_t enabled) override;
-
-    std::vector <uint256>
-        doValidation (enabledAmendments_t const& enabledAmendments)
-            override;
-
-    std::map <uint256, std::uint32_t> doVoting (std::uint32_t closeTime,
-        enabledAmendments_t const& enabledAmendments,
-        majorityAmendments_t const& majorityAmendments,
-        ValidationSet const& validations) override;
+    void doValidation (Ledger::ref lastClosedLedger, STObject& baseValidation) override;
+    void doVoting (Ledger::ref lastClosedLedger,
+                   std::shared_ptr<SHAMap> const& initialPosition) override;
 
     amendmentList_t getVetoed();
     amendmentList_t getEnabled();
-
-    // Amendments we support, do not veto, and are not enabled
-    amendmentList_t getDesired (enabledAmendments_t const&);
+    amendmentList_t getToEnable(core::Clock::time_point closeTime);   // gets amendments we would vote to enable
+    amendmentList_t getDesired();    // amendments we support, do not veto, are not enabled
 };
 
 namespace detail
@@ -123,8 +117,9 @@ namespace detail
 std::vector<AmendmentName> const preEnabledAmendments;
 }
 
+template<class AppApiFacade>
 void
-AmendmentTableImpl::addInitial (Section const& section)
+AmendmentTableImpl<AppApiFacade>::addInitial (Section const& section)
 {
     for (auto const& a : detail::preEnabledAmendments)
     {
@@ -182,8 +177,9 @@ AmendmentTableImpl::addInitial (Section const& section)
     }
 }
 
+template<class AppApiFacade>
 AmendmentState&
-AmendmentTableImpl::getCreate (uint256 const& amendmentHash)
+AmendmentTableImpl<AppApiFacade>::getCreate (uint256 const& amendmentHash)
 {
     // call with the mutex held
     auto iter (m_amendmentMap.find (amendmentHash));
@@ -191,14 +187,16 @@ AmendmentTableImpl::getCreate (uint256 const& amendmentHash)
     if (iter == m_amendmentMap.end())
     {
         AmendmentState& amendment = m_amendmentMap[amendmentHash];
+        m_appApiFacade.setMajorityTimesFromDBToState (amendment, amendmentHash);
         return amendment;
     }
 
     return iter->second;
 }
 
+template<class AppApiFacade>
 AmendmentState*
-AmendmentTableImpl::getExisting (uint256 const& amendmentHash)
+AmendmentTableImpl<AppApiFacade>::getExisting (uint256 const& amendmentHash)
 {
     // call with the mutex held
     auto iter (m_amendmentMap.find (amendmentHash));
@@ -209,10 +207,11 @@ AmendmentTableImpl::getExisting (uint256 const& amendmentHash)
     return & (iter->second);
 }
 
+template<class AppApiFacade>
 uint256
-AmendmentTableImpl::get (std::string const& name)
+AmendmentTableImpl<AppApiFacade>::get (std::string const& name)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
 
     for (auto const& e : m_amendmentMap)
     {
@@ -223,8 +222,9 @@ AmendmentTableImpl::get (std::string const& name)
     return uint256 ();
 }
 
+template<class AppApiFacade>
 void
-AmendmentTableImpl::addKnown (AmendmentName const& name)
+AmendmentTableImpl<AppApiFacade>::addKnown (AmendmentName const& name)
 {
     if (!name.valid ())
     {
@@ -236,7 +236,7 @@ AmendmentTableImpl::addKnown (AmendmentName const& name)
         throw std::runtime_error (errorMsg);
     }
 
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState& amendment = getCreate (name.id ());
 
     if (!name.friendlyName ().empty ())
@@ -246,10 +246,11 @@ AmendmentTableImpl::addKnown (AmendmentName const& name)
     amendment.mSupported = true;
 }
 
+template<class AppApiFacade>
 bool
-AmendmentTableImpl::veto (uint256 const& amendment)
+AmendmentTableImpl<AppApiFacade>::veto (uint256 const& amendment)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState& s = getCreate (amendment);
 
     if (s.mVetoed)
@@ -259,10 +260,11 @@ AmendmentTableImpl::veto (uint256 const& amendment)
     return true;
 }
 
+template<class AppApiFacade>
 bool
-AmendmentTableImpl::unVeto (uint256 const& amendment)
+AmendmentTableImpl<AppApiFacade>::unVeto (uint256 const& amendment)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState* s = getExisting (amendment);
 
     if (!s || !s->mVetoed)
@@ -272,10 +274,11 @@ AmendmentTableImpl::unVeto (uint256 const& amendment)
     return true;
 }
 
+template<class AppApiFacade>
 bool
-AmendmentTableImpl::enable (uint256 const& amendment)
+AmendmentTableImpl<AppApiFacade>::enable (uint256 const& amendment)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState& s = getCreate (amendment);
 
     if (s.mEnabled)
@@ -285,10 +288,11 @@ AmendmentTableImpl::enable (uint256 const& amendment)
     return true;
 }
 
+template<class AppApiFacade>
 bool
-AmendmentTableImpl::disable (uint256 const& amendment)
+AmendmentTableImpl<AppApiFacade>::disable (uint256 const& amendment)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState* s = getExisting (amendment);
 
     if (!s || !s->mEnabled)
@@ -298,27 +302,30 @@ AmendmentTableImpl::disable (uint256 const& amendment)
     return true;
 }
 
+template<class AppApiFacade>
 bool
-AmendmentTableImpl::isEnabled (uint256 const& amendment)
+AmendmentTableImpl<AppApiFacade>::isEnabled (uint256 const& amendment)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState* s = getExisting (amendment);
     return s && s->mEnabled;
 }
 
+template<class AppApiFacade>
 bool
-AmendmentTableImpl::isSupported (uint256 const& amendment)
+AmendmentTableImpl<AppApiFacade>::isSupported (uint256 const& amendment)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     AmendmentState* s = getExisting (amendment);
     return s && s->mSupported;
 }
 
-AmendmentTableImpl::amendmentList_t
-AmendmentTableImpl::getVetoed ()
+template<class AppApiFacade>
+typename AmendmentTableImpl<AppApiFacade>::amendmentList_t
+AmendmentTableImpl<AppApiFacade>::getVetoed ()
 {
     amendmentList_t ret;
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     for (auto const& e : m_amendmentMap)
     {
         if (e.second.mVetoed)
@@ -327,11 +334,12 @@ AmendmentTableImpl::getVetoed ()
     return ret;
 }
 
-AmendmentTableImpl::amendmentList_t
-AmendmentTableImpl::getEnabled ()
+template<class AppApiFacade>
+typename AmendmentTableImpl<AppApiFacade>::amendmentList_t
+AmendmentTableImpl<AppApiFacade>::getEnabled ()
 {
     amendmentList_t ret;
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     for (auto const& e : m_amendmentMap)
     {
         if (e.second.mEnabled)
@@ -340,26 +348,130 @@ AmendmentTableImpl::getEnabled ()
     return ret;
 }
 
-AmendmentTableImpl::amendmentList_t
-AmendmentTableImpl::getDesired (enabledAmendments_t const& enabled)
+template<class AppApiFacade>
+bool
+AmendmentTableImpl<AppApiFacade>::shouldEnable (std::uint32_t closeTime,
+    const AmendmentState& fs)
+{
+    if (fs.mVetoed || fs.mEnabled || !fs.mSupported || (fs.m_lastMajority != m_lastReport))
+        return false;
+
+    if (fs.m_firstMajority == m_firstReport)
+    {
+        // had a majority when we first started the server, relaxed check
+        // WRITEME
+    }
+
+    // didn't have a majority when we first started the server, normal check
+    return (fs.m_lastMajority - fs.m_firstMajority) > m_majorityTime.count();
+}
+
+template<class AppApiFacade>
+typename AmendmentTableImpl<AppApiFacade>::amendmentList_t
+AmendmentTableImpl<AppApiFacade>::getToEnable (core::Clock::time_point closeTime)
 {
     amendmentList_t ret;
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
+
+    if (m_lastReport != 0)
+    {
+        for (auto const& e : m_amendmentMap)
+        {
+            if (shouldEnable (closeTime, e.second))
+                ret.insert (e.first);
+        }
+    }
+
+    return ret;
+}
+
+template<class AppApiFacade>
+typename AmendmentTableImpl<AppApiFacade>::amendmentList_t
+AmendmentTableImpl<AppApiFacade>::getDesired ()
+{
+    amendmentList_t ret;
+    ScopedLockType sl (mLock);
 
     for (auto const& e : m_amendmentMap)
     {
-        if (e.second.mSupported && ! e.second.mVetoed &&
-            (enabled.count (e.first) == 0))
+        if (e.second.mSupported && !e.second.mEnabled && !e.second.mVetoed)
             ret.insert (e.first);
     }
 
     return ret;
 }
 
+template<class AppApiFacade>
 void
-AmendmentTableImpl::setEnabled (const std::vector<uint256>& amendments)
+AmendmentTableImpl<AppApiFacade>::reportValidations (const AmendmentSet& set)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    if (set.mTrustedValidations == 0)
+        return;
+
+    int threshold = (set.mTrustedValidations * mMajorityFraction) / 256;
+
+    typedef std::map<uint256, int>::value_type u256_int_pair;
+
+    ScopedLockType sl (mLock);
+
+    if (m_firstReport == 0)
+        m_firstReport = set.mCloseTime;
+
+    std::vector<uint256> changedAmendments;
+    changedAmendments.reserve (set.mVotes.size());
+
+    for (auto const& e : set.mVotes)
+    {
+        AmendmentState& state = m_amendmentMap[e.first];
+        if (m_journal.debug) m_journal.debug <<
+            "Amendment " << to_string (e.first) <<
+            " has " << e.second <<
+            " votes, needs " << threshold;
+
+        if (e.second >= threshold)
+        {
+            // we have a majority
+            state.m_lastMajority = set.mCloseTime;
+
+            if (state.m_firstMajority == 0)
+            {
+                if (m_journal.warning) m_journal.warning <<
+                    "Amendment " << to_string (e.first) <<
+                    " attains a majority vote";
+
+                state.m_firstMajority = set.mCloseTime;
+                changedAmendments.push_back(e.first);
+            }
+        }
+        else // we have no majority
+        {
+            if (state.m_firstMajority != 0)
+            {
+                if (m_journal.warning) m_journal.warning <<
+                    "Amendment " << to_string (e.first) <<
+                    " loses majority vote";
+
+                state.m_firstMajority = 0;
+                state.m_lastMajority = 0;
+                changedAmendments.push_back(e.first);
+            }
+        }
+    }
+    m_lastReport = set.mCloseTime;
+
+    if (!changedAmendments.empty())
+    {
+        m_appApiFacade.setMajorityTimesFromStateToDB (changedAmendments,
+                                                      m_amendmentMap);
+        changedAmendments.clear ();
+    }
+}
+
+template<class AppApiFacade>
+void
+AmendmentTableImpl<AppApiFacade>::setEnabled (const std::vector<uint256>& amendments)
+{
+    ScopedLockType sl (mLock);
     for (auto& e : m_amendmentMap)
     {
         e.second.mEnabled = false;
@@ -370,10 +482,11 @@ AmendmentTableImpl::setEnabled (const std::vector<uint256>& amendments)
     }
 }
 
+template<class AppApiFacade>
 void
-AmendmentTableImpl::setSupported (const std::vector<uint256>& amendments)
+AmendmentTableImpl<AppApiFacade>::setSupported (const std::vector<uint256>& amendments)
 {
-    std::lock_guard <std::mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     for (auto &e : m_amendmentMap)
     {
         e.second.mSupported = false;
@@ -384,34 +497,40 @@ AmendmentTableImpl::setSupported (const std::vector<uint256>& amendments)
     }
 }
 
-std::vector <uint256>
-AmendmentTableImpl::doValidation (
-    enabledAmendments_t const& enabledAmendments)
+template<class AppApiFacade>
+void
+AmendmentTableImpl<AppApiFacade>::doValidation (Ledger::ref lastClosedLedger,
+    STObject& baseValidation)
 {
-    auto lAmendments = getDesired (enabledAmendments);
+    auto lAmendments = getDesired();
 
     if (lAmendments.empty())
-        return {};
+        return;
 
-    std::vector <uint256> amendments (lAmendments.begin(), lAmendments.end());
+    STVector256 amendments (sfAmendments);
+
+    for (auto const& id : lAmendments)
+        amendments.push_back (id);
+
     std::sort (amendments.begin (), amendments.end ());
 
-    return amendments;
+    baseValidation.setFieldV256 (sfAmendments, amendments);
 }
 
-std::map <uint256, std::uint32_t>
-AmendmentTableImpl::doVoting (
-    std::uint32_t closeTime,
-    enabledAmendments_t const& enabledAmendments,
-    majorityAmendments_t const& majorityAmendments,
-    ValidationSet const& valSet)
+template<class AppApiFacade>
+void
+AmendmentTableImpl<AppApiFacade>::doVoting (Ledger::ref lastClosedLedger,
+    std::shared_ptr<SHAMap> const& initialPosition)
 {
+
     // LCL must be flag ledger
-    //assert((lastClosedLedger->info().seq % 256) == 0);
+    assert((lastClosedLedger->getLedgerSeq () % 256) == 0);
 
-    AmendmentSet amendmentSet (closeTime);
+    AmendmentSet amendmentSet (lastClosedLedger->getParentCloseTimeNC ());
 
-    // process validations for ledger before flag ledger
+    // get validations for ledger before flag ledger
+    ValidationSet valSet = m_appApiFacade.getValidations (
+        lastClosedLedger->getParentHash ());
     for (auto const& entry : valSet)
     {
         auto const& val = *entry.second;
@@ -428,87 +547,44 @@ AmendmentTableImpl::doVoting (
             }
         }
     }
-    int threshold =
-        (amendmentSet.mTrustedValidations * mMajorityFraction + 255) / 256;
+    reportValidations (amendmentSet);
 
-    if (m_journal.trace)
-        m_journal.trace <<
-            amendmentSet.mTrustedValidations << " trusted validations, threshold is "
-            << threshold;
-
-    // Map of amendments to the action to be taken
-    // for each one. The action is the value of the
-    // flags in the pseudo-transaction
-    std::map <uint256, std::uint32_t> actions;
-
+    amendmentList_t lAmendments = getToEnable (lastClosedLedger->getCloseTimeNC ());
+    for (auto const& uAmendment : lAmendments)
     {
-        std::lock_guard <std::mutex> sl (mLock);
+        if (m_journal.warning) m_journal.warning <<
+            "Voting for amendment: " << uAmendment;
 
-        // process all amendments we know of
-        for (auto const& entry : m_amendmentMap)
+        // Create the transaction to enable the amendment
+        STTx trans (ttAMENDMENT);
+        trans.setFieldAccount (sfAccount, Account ());
+        trans.setFieldH256 (sfAmendment, uAmendment);
+        uint256 txID = trans.getTransactionID ();
+
+        if (m_journal.warning) m_journal.warning <<
+            "Vote ID: " << txID;
+
+        // Inject the transaction into our initial proposal
+        Serializer s;
+        trans.add (s, true);
+#if RIPPLE_PROPOSE_AMENDMENTS
+        auto tItem = std::make_shared<SHAMapItem> (txID, s.peekData ());
+        if (!initialPosition->addGiveItem (tItem, true, false))
         {
-            bool const hasValMajority = amendmentSet.count (entry.first) >= threshold;
-
-            std::uint32_t majorityTime = 0;
-            auto const it = majorityAmendments.find (entry.first);
-            if (it != majorityAmendments.end ())
-                majorityTime = it->second;
-
-            // FIXME: Add logging here
-            if (enabledAmendments.count (entry.first) != 0)
-            {
-                // Already enabled, nothing to do
-            }
-            else  if (hasValMajority && (majorityTime == 0) && (! entry.second.mVetoed))
-            {
-                // Ledger says no majority, validators say yes
-                actions[entry.first] = tfGotMajority;
-            }
-            else if (! hasValMajority && (majorityTime != 0))
-            {
-                // Ledger says majority, validators say no
-                actions[entry.first] = tfLostMajority;
-            }
-            else if ((majorityTime != 0) &&
-                ((majorityTime + m_majorityTime.count()) <= closeTime) &&
-                ! entry.second.mVetoed)
-            {
-                // Ledger says majority held
-                actions[entry.first] = 0;
-            }
+            if (m_journal.warning) m_journal.warning <<
+                "Ledger already had amendment transaction";
         }
+#endif
     }
-
-    return actions;
 }
 
-bool
-AmendmentTableImpl::needValidatedLedger (LedgerIndex ledgerSeq)
-{
-    std::lock_guard <std::mutex> sl (mLock);
-
-    // Is there a ledger in which an amendment could have been enabled
-    // between these two ledger sequences?
-
-    return ((ledgerSeq - 1) / 256) != ((m_lastUpdateSeq - 1) / 256);
-}
-
-void
-AmendmentTableImpl::doValidatedLedger (LedgerIndex ledgerSeq,
-    enabledAmendments_t enabled)
-{
-    std::lock_guard <std::mutex> sl (mLock);
-
-    for (auto& e : m_amendmentMap)
-        e.second.mEnabled = (enabled.count (e.first) != 0);
-}
-
+template<class AppApiFacade>
 Json::Value
-AmendmentTableImpl::getJson (int)
+AmendmentTableImpl<AppApiFacade>::getJson (int)
 {
     Json::Value ret(Json::objectValue);
     {
-        std::lock_guard <std::mutex> sl(mLock);
+        ScopedLockType sl(mLock);
         for (auto const& e : m_amendmentMap)
         {
             setJson (ret[to_string (e.first)] = Json::objectValue, e.second);
@@ -517,25 +593,62 @@ AmendmentTableImpl::getJson (int)
     return ret;
 }
 
+template<class AppApiFacade>
 void
-AmendmentTableImpl::setJson (Json::Value& v, const AmendmentState& fs)
+AmendmentTableImpl<AppApiFacade>::setJson (Json::Value& v, const AmendmentState& fs)
 {
     if (!fs.mFriendlyName.empty())
         v[jss::name] = fs.mFriendlyName;
 
     v[jss::supported] = fs.mSupported;
     v[jss::vetoed] = fs.mVetoed;
-    v[jss::enabled] = fs.mEnabled;
+
+    if (fs.mEnabled)
+        v[jss::enabled] = true;
+    else
+    {
+        v[jss::enabled] = false;
+
+        if (m_lastReport != 0)
+        {
+            if (fs.m_lastMajority == 0)
+            {
+                v["majority"] = false;
+            }
+            else
+            {
+                if (fs.m_firstMajority != 0)
+                {
+                    if (fs.m_firstMajority == m_firstReport)
+                        v["majority_start"] = "start";
+                    else
+                        v["majority_start"] = fs.m_firstMajority;
+                }
+
+                if (fs.m_lastMajority != 0)
+                {
+                    if (fs.m_lastMajority == m_lastReport)
+                        v["majority_until"] = "now";
+                    else
+                        v["majority_until"] = fs.m_lastMajority;
+                }
+            }
+        }
+    }
+
+    if (fs.mVetoed)
+        v["veto"] = true;
 }
 
+template<class AppApiFacade>
 Json::Value
-AmendmentTableImpl::getJson (uint256 const& amendmentID)
+AmendmentTableImpl<AppApiFacade>::getJson (uint256 const& amendmentID)
 {
     Json::Value ret = Json::objectValue;
     Json::Value& jAmendment = (ret[to_string (amendmentID)] = Json::objectValue);
 
     {
-        std::lock_guard <std::mutex> sl(mLock);
+        ScopedLockType sl(mLock);
 
         AmendmentState& amendmentState = getCreate (amendmentID);
         setJson (jAmendment, amendmentState);
@@ -544,13 +657,101 @@ AmendmentTableImpl::getJson (uint256 const& amendmentID)
     return ret;
 }
 
+namespace detail
+{
+class AppApiFacadeImpl final
+{
+public:
+    void setMajorityTimesFromDBToState (AmendmentState& toUpdate,
+                                        uint256 const& amendmentHash) const;
+    void setMajorityTimesFromStateToDB (
+        std::vector<uint256> const& changedAmendments,
+        hash_map<uint256, AmendmentState>& amendmentMap) const;
+    ValidationSet getValidations (uint256 const& hash) const;
+};
+
+class AppApiFacadeMock final
+{
+public:
+    void setMajorityTimesFromDBToState (AmendmentState& toUpdate,
+                                        uint256 const& amendmentHash) const {};
+    void setMajorityTimesFromStateToDB (
+        std::vector<uint256> const& changedAmendments,
+        hash_map<uint256, AmendmentState>& amendmentMap) const {};
+    ValidationSet getValidations (uint256 const& hash) const
+    {
+        return ValidationSet ();
+    };
+};
+
+void AppApiFacadeImpl::setMajorityTimesFromDBToState (
+    AmendmentState& toUpdate,
+    uint256 const& amendmentHash) const
+{
+    std::string query =
+        "SELECT FirstMajority,LastMajority FROM Features WHERE hash='";
+    query.append (to_string (amendmentHash));
+    query.append ("';");
+
+    auto db (getApp ().getWalletDB ().checkoutDb ());
+
+    boost::optional<std::uint64_t> fm, lm;
+    soci::statement st = (db->prepare << query,
+                          soci::into(fm),
+                          soci::into(lm));
+    st.execute ();
+    while (st.fetch ())
+    {
+        toUpdate.m_firstMajority = fm.value_or (0);
+        toUpdate.m_lastMajority = lm.value_or (0);
+    }
+}
+
+void AppApiFacadeImpl::setMajorityTimesFromStateToDB (
+    std::vector<uint256> const& changedAmendments,
+    hash_map<uint256, AmendmentState>& amendmentMap) const
+{
+    if (changedAmendments.empty ())
+        return;
+
+    auto db (getApp ().getWalletDB ().checkoutDb ());
+
+    soci::transaction tr(*db);
+    
+    for (auto const& hash : changedAmendments)
+    {
+        AmendmentState const& fState = amendmentMap[hash];
+        *db << boost::str (boost::format ("UPDATE Features SET FirstMajority "
+                                          "= %d WHERE Hash = '%s';") %
+                           fState.m_firstMajority % to_string (hash));
+        *db << boost::str (boost::format ("UPDATE Features SET LastMajority "
+                                          "= %d WHERE Hash = '%s';") %
+                           fState.m_lastMajority % to_string (hash));
+    }
+
+    tr.commit ();
+}
+
+ValidationSet AppApiFacadeImpl::getValidations (uint256 const& hash) const
+{
+    return getApp ().getValidations ().getValidations (hash);
+}
+}  // detail
+
 std::unique_ptr<AmendmentTable> make_AmendmentTable (
     std::chrono::seconds majorityTime,
     int majorityFraction,
-    beast::Journal journal)
+    beast::Journal journal,
+    bool useMockFacade)
 {
-    return std::make_unique<AmendmentTableImpl>(
-        majorityTime, majorityFraction, journal);
+    if (useMockFacade)
+    {
+        return std::make_unique<AmendmentTableImpl<detail::AppApiFacadeMock>>(
+            majorityTime, majorityFraction, std::move (journal));
+    }
+
+    return std::make_unique<AmendmentTableImpl<detail::AppApiFacadeImpl>>(
+        majorityTime, majorityFraction, std::move (journal));
 }
 
 }  // ripple

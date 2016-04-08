@@ -21,7 +21,7 @@
 #define RIPPLE_PEERFINDER_SLOTIMP_H_INCLUDED
 
 #include <ripple/peerfinder/Slot.h>
-#include <ripple/peerfinder/PeerfinderManager.h>
+#include <ripple/peerfinder/Manager.h>
 #include <beast/config/CompilerConfig.h>
 #include <beast/container/aged_unordered_map.h>
 #include <beast/container/aged_container_utility.h>
@@ -34,10 +34,10 @@ namespace PeerFinder {
 class SlotImp : public Slot
 {
 private:
-    using recent_type = beast::aged_unordered_map <beast::IP::Endpoint, int>;
+    typedef beast::aged_unordered_map <beast::IP::Endpoint, int> recent_type;
 
 public:
-    using ptr = std::shared_ptr <SlotImp>;
+    typedef std::shared_ptr <SlotImp> ptr;
 
     // inbound
     SlotImp (beast::IP::Endpoint const& local_endpoint,

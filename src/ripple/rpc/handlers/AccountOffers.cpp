@@ -18,36 +18,13 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/json/json_value.h>
-#include <ripple/ledger/ReadView.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/resource/Fees.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/AccountFromString.h>
-#include <ripple/rpc/impl/LookupLedger.h>
 #include <ripple/rpc/impl/Tuning.h>
-#include <ripple/rpc/impl/Utilities.h>
 
 namespace ripple {
 
-void appendOfferJson (std::shared_ptr<SLE const> const& offer,
-                      Json::Value& offers)
-{
-    STAmount dirRate = amountFromQuality (
-          getQuality (offer->getFieldH256 (sfBookDirectory)));
-    Json::Value& obj (offers.append (Json::objectValue));
-    offer->getFieldAmount (sfTakerPays).setJson (obj[jss::taker_pays]);
-    offer->getFieldAmount (sfTakerGets).setJson (obj[jss::taker_gets]);
-    obj[jss::seq] = offer->getFieldU32 (sfSequence);
-    obj[jss::flags] = offer->getFieldU32 (sfFlags);
-    obj[jss::quality] = dirRate.getText ();
-};
-
 // {
 //   account: <account>|<account_public_key>
+//   account_index: <number>        // optional, defaults to 0.
 //   ledger_hash : <ledger>
 //   ledger_index : <ledger_index>
 //   limit: integer                 // optional
@@ -59,34 +36,59 @@ Json::Value doAccountOffers (RPC::Context& context)
     if (! params.isMember (jss::account))
         return RPC::missing_field_error (jss::account);
 
-    std::shared_ptr<ReadView const> ledger;
-    auto result = RPC::lookupLedger (ledger, context);
+    Ledger::pointer ledger;
+    Json::Value result (RPC::lookupLedger (params, ledger, context.netOps));
     if (! ledger)
         return result;
 
     std::string strIdent (params[jss::account].asString ());
-    AccountID accountID;
+    bool bIndex (params.isMember (jss::account_index));
+    int const iIndex (bIndex ? params[jss::account_index].asUInt () : 0);
+    RippleAddress rippleAddress;
 
-    if (auto jv = RPC::accountFromString (accountID, strIdent))
+    Json::Value const jv (RPC::accountFromString (ledger, rippleAddress, bIndex,
+        strIdent, iIndex, false, context.netOps));
+    if (! jv.empty ())
     {
-        for (auto it = jv.begin (); it != jv.end (); ++it)
+        for (Json::Value::const_iterator it (jv.begin ()); it != jv.end (); ++it)
             result[it.memberName ()] = it.key ();
 
         return result;
     }
 
     // Get info on account.
-    result[jss::account] = context.app.accountIDCache().toBase58 (accountID);
+    result[jss::account] = rippleAddress.humanAccountID ();
 
-    if (! ledger->exists(keylet::account (accountID)))
+    if (bIndex)
+        result[jss::account_index] = iIndex;
+
+    if (! ledger->hasAccount (rippleAddress))
         return rpcError (rpcACT_NOT_FOUND);
 
     unsigned int limit;
-    if (auto err = readLimitField(limit, RPC::Tuning::accountOffers, context))
-        return *err;
+    if (params.isMember (jss::limit))
+    {
+        auto const& jvLimit (params[jss::limit]);
+        if (! jvLimit.isIntegral ())
+            return RPC::expected_field_error (jss::limit, "unsigned integer");
 
+        limit = jvLimit.isUInt () ? jvLimit.asUInt () :
+            std::max (0, jvLimit.asInt ());
+
+        if (context.role != Role::ADMIN)
+        {
+            limit = std::max (RPC::Tuning::minOffersPerRequest,
+                std::min (limit, RPC::Tuning::maxOffersPerRequest));
+        }
+    }
+    else
+    {
+        limit = RPC::Tuning::defaultOffersPerRequest;
+    }
+
+    Account const& raAccount (rippleAddress.getAccountID ());
     Json::Value& jsonOffers (result[jss::offers] = Json::arrayValue);
-    std::vector <std::shared_ptr<SLE const>> offers;
+    std::vector <SLE::pointer> offers;
     unsigned int reserve (limit);
     uint256 startAfter;
     std::uint64_t startHint;
@@ -101,16 +103,24 @@ Json::Value doAccountOffers (RPC::Context& context)
             return RPC::expected_field_error (jss::marker, "string");
 
         startAfter.SetHex (marker.asString ());
-        auto const sleOffer = ledger->read({ltOFFER, startAfter});
+        SLE::pointer sleOffer (ledger->getSLEi (startAfter));
 
-        if (! sleOffer || accountID != sleOffer->getAccountID (sfAccount))
+        if (sleOffer == nullptr ||
+            sleOffer->getType () != ltOFFER ||
+            raAccount != sleOffer->getFieldAccount160 (sfAccount))
         {
             return rpcError (rpcINVALID_PARAMS);
         }
 
         startHint = sleOffer->getFieldU64(sfOwnerNode);
+
         // Caller provided the first offer (startAfter), add it as first result
-        appendOfferJson(sleOffer, jsonOffers);
+        Json::Value& obj (jsonOffers.append (Json::objectValue));
+        sleOffer->getFieldAmount (sfTakerPays).setJson (obj[jss::taker_pays]);
+        sleOffer->getFieldAmount (sfTakerGets).setJson (obj[jss::taker_gets]);
+        obj[jss::seq] = sleOffer->getFieldU32 (sfSequence);
+        obj[jss::flags] = sleOffer->getFieldU32 (sfFlags);
+
         offers.reserve (reserve);
     }
     else
@@ -120,22 +130,19 @@ Json::Value doAccountOffers (RPC::Context& context)
         offers.reserve (++reserve);
     }
 
-    {
-        if (! forEachItemAfter(*ledger, accountID,
-                startAfter, startHint, reserve,
-            [&offers](std::shared_ptr<SLE const> const& offer)
-            {
-                if (offer->getType () == ltOFFER)
-                {
-                    offers.emplace_back (offer);
-                    return true;
-                }
-
-                return false;
-            }))
+    if (! ledger->visitAccountItems (raAccount, startAfter, startHint, reserve,
+        [&offers](SLE::ref offer)
         {
-            return rpcError (rpcINVALID_PARAMS);
-        }
+            if (offer->getType () == ltOFFER)
+            {
+                offers.emplace_back (offer);
+                return true;
+            }
+
+            return false;
+        }))
+    {
+        return rpcError (rpcINVALID_PARAMS);
     }
 
     if (offers.size () == reserve)
@@ -148,7 +155,11 @@ Json::Value doAccountOffers (RPC::Context& context)
 
     for (auto const& offer : offers)
     {
-        appendOfferJson(offer, jsonOffers);
+        Json::Value& obj (jsonOffers.append (Json::objectValue));
+        offer->getFieldAmount (sfTakerPays).setJson (obj[jss::taker_pays]);
+        offer->getFieldAmount (sfTakerGets).setJson (obj[jss::taker_gets]);
+        obj[jss::seq] = offer->getFieldU32 (sfSequence);
+        obj[jss::flags] = offer->getFieldU32 (sfFlags);
     }
 
     context.loadType = Resource::feeMediumBurdenRPC;

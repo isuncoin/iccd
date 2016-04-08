@@ -18,13 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/basics/Log.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/ParseAccountIds.h>
 #include <ripple/server/Role.h>
 
 namespace ripple {
@@ -79,12 +72,6 @@ Json::Value doUnsubscribe (RPC::Context& context)
                 else if (streamName == "transactions_proposed"
                          || streamName == "rt_transactions") // DEPRECATED
                     context.netOps.unsubRTTransactions (ispSub->getSeq ());
-
-                else if (streamName == "validations")
-                    context.netOps.unsubValidations (ispSub->getSeq ());
-
-                else if (streamName == "peer_status")
-                    context.netOps.unsubPeerStatus (ispSub->getSeq ());
 
                 else
                     jvResult[jss::error] = "Unknown stream: " + streamName;
@@ -152,7 +139,7 @@ Json::Value doUnsubscribe (RPC::Context& context)
                 || !to_currency (
                     book.in.currency, taker_pays[jss::currency].asString ()))
             {
-                JLOG (context.j.info) << "Bad taker_pays currency.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_pays currency.";
                 return rpcError (rpcSRC_CUR_MALFORMED);
             }
             // Parse optional issuer.
@@ -164,7 +151,7 @@ Json::Value doUnsubscribe (RPC::Context& context)
                      || !isConsistent (book.in)
                      || noAccount() == book.in.account)
             {
-                JLOG (context.j.info) << "Bad taker_pays issuer.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_pays issuer.";
 
                 return rpcError (rpcSRC_ISR_MALFORMED);
             }
@@ -174,7 +161,7 @@ Json::Value doUnsubscribe (RPC::Context& context)
                     || !to_currency (book.out.currency,
                                      taker_gets[jss::currency].asString ()))
             {
-                JLOG (context.j.info) << "Bad taker_pays currency.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_pays currency.";
 
                 return rpcError (rpcSRC_CUR_MALFORMED);
             }
@@ -187,14 +174,14 @@ Json::Value doUnsubscribe (RPC::Context& context)
                      || !isConsistent (book.out)
                      || noAccount() == book.out.account)
             {
-                JLOG (context.j.info) << "Bad taker_gets issuer.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_gets issuer.";
 
                 return rpcError (rpcDST_ISR_MALFORMED);
             }
 
             if (book.in == book.out)
             {
-                JLOG (context.j.info)
+                WriteLog (lsINFO, RPCHandler)
                     << "taker_gets same as taker_pays.";
                 return rpcError (rpcBAD_MARKET);
             }

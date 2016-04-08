@@ -25,7 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 
 namespace beast {
 namespace nudb {

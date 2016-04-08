@@ -25,23 +25,22 @@
 namespace ripple {
 namespace path {
 
-TER PathCursor::liquidity () const
+TER PathCursor::liquidity (LedgerEntrySet const& lesCheckpoint) const
 {
     TER resultCode = tecPATH_DRY;
     PathCursor pc = *this;
 
-    pathState_.resetView (rippleCalc_.view);
-
+    ledger() = lesCheckpoint.duplicate ();
     for (pc.nodeIndex_ = pc.nodeSize(); pc.nodeIndex_--; )
     {
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "reverseLiquidity>"
             << " nodeIndex=" << pc.nodeIndex_
             << ".issue_.account=" << to_string (pc.node().issue_.account);
 
         resultCode  = pc.reverseLiquidity();
 
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "reverseLiquidity< "
             << "nodeIndex=" << pc.nodeIndex_
             << " resultCode=" << transToken (resultCode)
@@ -53,24 +52,24 @@ TER PathCursor::liquidity () const
     }
 
     // VFALCO-FIXME this generates errors
-    // JLOG (j_.trace)
+    // WriteLog (lsTRACE, RippleCalc)
     //     << "nextIncrement: Path after reverse: " << pathState_.getJson ();
 
     if (resultCode != tesSUCCESS)
         return resultCode;
 
-    pathState_.resetView (rippleCalc_.view);
-
+    // Do forward.
+    ledger() = lesCheckpoint.duplicate ();
     for (pc.nodeIndex_ = 0; pc.nodeIndex_ < pc.nodeSize(); ++pc.nodeIndex_)
     {
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "forwardLiquidity> nodeIndex=" << nodeIndex_;
 
         resultCode = pc.forwardLiquidity();
         if (resultCode != tesSUCCESS)
             return resultCode;
 
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "forwardLiquidity<"
             << " nodeIndex:" << pc.nodeIndex_
             << " resultCode:" << resultCode;

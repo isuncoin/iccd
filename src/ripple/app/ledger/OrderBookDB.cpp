@@ -28,26 +28,23 @@
 
 namespace ripple {
 
-OrderBookDB::OrderBookDB (Application& app, Stoppable& parent)
+OrderBookDB::OrderBookDB (Stoppable& parent)
     : Stoppable ("OrderBookDB", parent)
-    , app_ (app)
     , mSeq (0)
-    , j_ (app.journal ("OrderBookDB"))
 {
 }
 
 void OrderBookDB::invalidate ()
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     mSeq = 0;
 }
 
-void OrderBookDB::setup(
-    std::shared_ptr<ReadView const> const& ledger)
+void OrderBookDB::setup (Ledger::ref ledger)
 {
     {
-        std::lock_guard <std::recursive_mutex> sl (mLock);
-        auto seq = ledger->info().seq;
+        ScopedLockType sl (mLock);
+        auto seq = ledger->getLedgerSeq ();
 
         // Do a full update every 256 ledgers
         if (mSeq != 0)
@@ -60,107 +57,100 @@ void OrderBookDB::setup(
                 return;
         }
 
-        JLOG (j_.debug)
+        WriteLog (lsDEBUG, OrderBookDB)
             << "Advancing from " << mSeq << " to " << seq;
 
         mSeq = seq;
     }
 
-    if (app_.config().PATH_SEARCH_MAX == 0)
-    {
-        // nothing to do
-    }
-    else if (app_.config().RUN_STANDALONE)
+    if (getConfig().RUN_STANDALONE)
         update(ledger);
     else
-        app_.getJobQueue().addJob(
-            jtUPDATE_PF, "OrderBookDB::update",
-            [this, ledger] (Job&) { update(ledger); });
+        getApp().getJobQueue().addJob(jtUPDATE_PF, "OrderBookDB::update",
+            std::bind(&OrderBookDB::update, this, ledger));
 }
 
-void OrderBookDB::update(
-    std::shared_ptr<ReadView const> const& ledger)
+static void updateHelper (SLE::ref entry,
+    hash_set< uint256 >& seen,
+    OrderBookDB::IssueToOrderBook& destMap,
+    OrderBookDB::IssueToOrderBook& sourceMap,
+    hash_set< Issue >& ICCBooks,
+    int& books)
+{
+    if (entry->getType () == ltDIR_NODE &&
+        entry->isFieldPresent (sfExchangeRate) &&
+        entry->getFieldH256 (sfRootIndex) == entry->getIndex())
+    {
+        Book book;
+        book.in.currency.copyFrom (entry->getFieldH160 (sfTakerPaysCurrency));
+        book.in.account.copyFrom (entry->getFieldH160 (sfTakerPaysIssuer));
+        book.out.account.copyFrom (entry->getFieldH160 (sfTakerGetsIssuer));
+        book.out.currency.copyFrom (entry->getFieldH160 (sfTakerGetsCurrency));
+
+        uint256 index = getBookBase (book);
+        if (seen.insert (index).second)
+        {
+            auto orderBook = std::make_shared<OrderBook> (index, book);
+            sourceMap[book.in].push_back (orderBook);
+            destMap[book.out].push_back (orderBook);
+            if (isICC(book.out))
+                ICCBooks.insert(book.in);
+            ++books;
+        }
+    }
+}
+
+void OrderBookDB::update (Ledger::pointer ledger)
 {
     hash_set< uint256 > seen;
     OrderBookDB::IssueToOrderBook destMap;
     OrderBookDB::IssueToOrderBook sourceMap;
-    hash_set< Issue > XRPBooks;
+    hash_set< Issue > ICCBooks;
 
-    JLOG (j_.debug) << "OrderBookDB::update>";
-
-    if (app_.config().PATH_SEARCH_MAX == 0)
-    {
-        // pathfinding has been disabled
-        return;
-    }
+    WriteLog (lsDEBUG, OrderBookDB) << "OrderBookDB::update>";
 
     // walk through the entire ledger looking for orderbook entries
     int books = 0;
 
     try
     {
-        for(auto& sle : ledger->sles)
-        {
-            if (sle->getType () == ltDIR_NODE &&
-                sle->isFieldPresent (sfExchangeRate) &&
-                sle->getFieldH256 (sfRootIndex) == sle->getIndex())
-            {
-                Book book;
-                book.in.currency.copyFrom(sle->getFieldH160(
-                    sfTakerPaysCurrency));
-                book.in.account.copyFrom(sle->getFieldH160 (
-                    sfTakerPaysIssuer));
-                book.out.account.copyFrom(sle->getFieldH160(
-                    sfTakerGetsIssuer));
-                book.out.currency.copyFrom (sle->getFieldH160(
-                    sfTakerGetsCurrency));
-
-                uint256 index = getBookBase (book);
-                if (seen.insert (index).second)
-                {
-                    auto orderBook = std::make_shared<OrderBook> (index, book);
-                    sourceMap[book.in].push_back (orderBook);
-                    destMap[book.out].push_back (orderBook);
-                    if (isXRP(book.out))
-                        XRPBooks.insert(book.in);
-                    ++books;
-                }
-            }
-        }
+        ledger->visitStateItems(std::bind(&updateHelper, std::placeholders::_1,
+                                          std::ref(seen), std::ref(destMap),
+            std::ref(sourceMap), std::ref(ICCBooks), std::ref(books)));
     }
     catch (const SHAMapMissingNode&)
     {
-        JLOG (j_.info) 
+        WriteLog (lsINFO, OrderBookDB)
             << "OrderBookDB::update encountered a missing node";
-        std::lock_guard <std::recursive_mutex> sl (mLock);
+        ScopedLockType sl (mLock);
         mSeq = 0;
         return;
     }
 
-    JLOG (j_.debug)
+    WriteLog (lsDEBUG, OrderBookDB)
         << "OrderBookDB::update< " << books << " books found";
     {
-        std::lock_guard <std::recursive_mutex> sl (mLock);
+        ScopedLockType sl (mLock);
 
-        mXRPBooks.swap(XRPBooks);
+        mICCBooks.swap(ICCBooks);
         mSourceMap.swap(sourceMap);
         mDestMap.swap(destMap);
     }
-    app_.getLedgerMaster().newOrderBookDB();
+    getApp().getLedgerMaster().newOrderBookDB();
 }
 
 void OrderBookDB::addOrderBook(Book const& book)
 {
-    bool toXRP = isXRP (book.out);
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    bool toICC = isICC (book.out);
+    ScopedLockType sl (mLock);
 
-    if (toXRP)
+    if (toICC)
     {
-        // We don't want to search through all the to-XRP or from-XRP order
+        // We don't want to search through all the to-ICC or from-ICC order
         // books!
         for (auto ob: mSourceMap[book.in])
         {
-            if (isXRP (ob->getCurrencyOut ())) // also to XRP
+            if (isICC (ob->getCurrencyOut ())) // also to ICC
                 return;
         }
     }
@@ -180,33 +170,33 @@ void OrderBookDB::addOrderBook(Book const& book)
 
     mSourceMap[book.in].push_back (orderBook);
     mDestMap[book.out].push_back (orderBook);
-    if (toXRP)
-        mXRPBooks.insert(book.in);
+    if (toICC)
+        mICCBooks.insert(book.in);
 }
 
 // return list of all orderbooks that want this issuerID and currencyID
 OrderBook::List OrderBookDB::getBooksByTakerPays (Issue const& issue)
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     auto it = mSourceMap.find (issue);
     return it == mSourceMap.end () ? OrderBook::List() : it->second;
 }
 
 int OrderBookDB::getBookSize(Issue const& issue) {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     auto it = mSourceMap.find (issue);
     return it == mSourceMap.end () ? 0 : it->second.size();
 }
 
-bool OrderBookDB::isBookToXRP(Issue const& issue)
+bool OrderBookDB::isBookToICC(Issue const& issue)
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
-    return mXRPBooks.count(issue) > 0;
+    ScopedLockType sl (mLock);
+    return mICCBooks.count(issue) > 0;
 }
 
 BookListeners::pointer OrderBookDB::makeBookListeners (Book const& book)
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     auto ret = getBookListeners (book);
 
     if (!ret)
@@ -223,7 +213,7 @@ BookListeners::pointer OrderBookDB::makeBookListeners (Book const& book)
 BookListeners::pointer OrderBookDB::getBookListeners (Book const& book)
 {
     BookListeners::pointer ret;
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
 
     auto it0 = mListeners.find (book);
     if (it0 != mListeners.end ())
@@ -235,10 +225,9 @@ BookListeners::pointer OrderBookDB::getBookListeners (Book const& book)
 // Based on the meta, send the meta to the streams that are listening.
 // We need to determine which streams a given meta effects.
 void OrderBookDB::processTxn (
-    std::shared_ptr<ReadView const> const& ledger,
-        const AcceptedLedgerTx& alTx, Json::Value const& jvObj)
+    Ledger::ref ledger, const AcceptedLedgerTx& alTx, Json::Value const& jvObj)
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
 
     if (alTx.getResult () == tesSUCCESS)
     {
@@ -267,9 +256,7 @@ void OrderBookDB::processTxn (
                         auto data = dynamic_cast<const STObject*> (
                             node.peekAtPField (*field));
 
-                        if (data &&
-                            data->isFieldPresent (sfTakerPays) &&
-                            data->isFieldPresent (sfTakerGets))
+                        if (data)
                         {
                             // determine the OrderBook
                             auto listeners = getBookListeners (
@@ -284,7 +271,7 @@ void OrderBookDB::processTxn (
             }
             catch (...)
             {
-                JLOG (j_.info)
+                WriteLog (lsINFO, OrderBookDB)
                     << "Fields not found in OrderBookDB::processTxn";
             }
         }

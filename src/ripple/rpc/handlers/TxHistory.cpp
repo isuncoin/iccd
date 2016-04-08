@@ -18,17 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/Transaction.h>
-#include <ripple/core/DatabaseCon.h>
-#include <ripple/core/SociDB.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/resource/Fees.h>
-#include <ripple/rpc/Context.h>
 #include <ripple/server/Role.h>
-#include <boost/format.hpp>
 
 namespace ripple {
 
@@ -59,7 +49,7 @@ Json::Value doTxHistory (RPC::Context& context)
                     % startIndex);
 
     {
-        auto db = context.app.getTxnDB ().checkoutDb ();
+        auto db = getApp().getTxnDB ().checkoutDb ();
 
         boost::optional<std::uint64_t> ledgerSeq;
         boost::optional<std::string> status;
@@ -81,7 +71,7 @@ Json::Value doTxHistory (RPC::Context& context)
                 rawTxn.clear ();
 
             if (auto trans = Transaction::transactionFromSQL (
-                    ledgerSeq, status, rawTxn, context.app))
+                    ledgerSeq, status, rawTxn, Validate::NO))
                 txs.append (trans->getJson (0));
         }
     }

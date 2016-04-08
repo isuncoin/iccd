@@ -21,21 +21,18 @@
 #define RIPPLE_APP_PATHS_ACCOUNTCURRENCIES_H_INCLUDED
 
 #include <ripple/app/paths/RippleLineCache.h>
-#include <ripple/protocol/types.h>
 
 namespace ripple {
 
-hash_set<Currency>
-accountDestCurrencies(
-    AccountID const& account,
-        RippleLineCache::ref cache,
-            bool includeXRP);
+CurrencySet accountDestCurrencies
+        (RippleAddress const& raAccountID,
+         RippleLineCache::ref cache,
+         bool includeICC);
 
-hash_set<Currency>
-accountSourceCurrencies(
-    AccountID const& account,
-        RippleLineCache::ref lrLedger,
-             bool includeXRP);
+CurrencySet accountSourceCurrencies
+        (RippleAddress const& raAccountID,
+         RippleLineCache::ref lrLedger,
+         bool includeICC);
 
 } // ripple
 

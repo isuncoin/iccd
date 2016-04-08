@@ -17,6 +17,8 @@
 */
 //==============================================================================
 
+#include <beast/utility/static_initializer.h>
+
 namespace beast
 {
 
@@ -24,8 +26,8 @@ class DeadlineTimer::Manager
     : protected Thread
 {
 private:
-    using LockType = CriticalSection;
-    using Items = List <DeadlineTimer>;
+    typedef CriticalSection LockType;
+    typedef List <DeadlineTimer> Items;
 
 public:
     Manager () : Thread ("DeadlineTimer::Manager")
@@ -45,8 +47,8 @@ public:
     Manager&
     instance()
     {
-        static Manager m;
-        return m;
+        static beast::static_initializer<Manager> m;
+        return *m;
     }
 
     // Okay to call on an active timer.

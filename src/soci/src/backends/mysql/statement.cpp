@@ -7,9 +7,14 @@
 //
 
 #define SOCI_MYSQL_SOURCE
-#include "soci/mysql/soci-mysql.h"
+#include "soci-mysql.h"
 #include <cctype>
 #include <ciso646>
+//#include <iostream>
+
+#ifdef _MSC_VER
+#pragma warning(disable:4355)
+#endif
 
 using namespace soci;
 using namespace soci::details;
@@ -18,7 +23,7 @@ using std::string;
 
 mysql_statement_backend::mysql_statement_backend(
     mysql_session_backend &session)
-    : session_(session), result_(NULL),
+    : session_(session), result_(NULL), 
        rowsAffectedBulk_(-1LL), justDescribed_(false),
        hasIntoElements_(false), hasVectorIntoElements_(false),
        hasUseElements_(false), hasVectorUseElements_(false)
@@ -32,7 +37,7 @@ void mysql_statement_backend::alloc()
 
 void mysql_statement_backend::clean_up()
 {
-    // 'reset' the value for a
+    // 'reset' the value for a 
     // potential new execution.
     rowsAffectedBulk_ = -1;
 
@@ -140,7 +145,7 @@ mysql_statement_backend::execute(int number)
     if (justDescribed_ == false)
     {
         clean_up();
-
+        
         if (number > 1 && hasIntoElements_)
         {
              throw soci_error(
@@ -153,7 +158,7 @@ mysql_statement_backend::execute(int number)
         {
              numberOfExecutions = hasUseElements_ ? 1 : number;
         }
-
+        
         std::string query;
         if (not useByPosBuffers_.empty() or not useByNameBuffers_.empty())
         {
@@ -232,7 +237,7 @@ mysql_statement_backend::execute(int number)
                     // bulk operation
                     //std::cerr << "bulk operation:\n" << query << std::endl;
                     if (0 != mysql_real_query(session_.conn_, query.c_str(),
-                            static_cast<unsigned long>(query.size())))
+                            query.size()))
                     {
                         // preserve the number of rows affected so far.
                         rowsAffectedBulk_ = rowsAffectedBulkTemp;
@@ -265,7 +270,7 @@ mysql_statement_backend::execute(int number)
 
         //std::cerr << query << std::endl;
         if (0 != mysql_real_query(session_.conn_, query.c_str(),
-                static_cast<unsigned long>(query.size())))
+                query.size()))
         {
             throw mysql_soci_error(mysql_error(session_.conn_),
                 mysql_errno(session_.conn_));
@@ -333,7 +338,7 @@ mysql_statement_backend::fetch(int number)
     // function, and the actual consumption of this data will take place
     // in the postFetch functions, called for each into element.
     // Here, we only prepare for this to happen (to emulate "the Oracle way").
-
+    
     // forward the "cursor" from the last fetch
     currentRow_ += rowsToConsume_;
 
@@ -373,11 +378,6 @@ long long mysql_statement_backend::get_affected_rows()
 int mysql_statement_backend::get_number_of_rows()
 {
     return numberOfRows_ - currentRow_;
-}
-
-std::string mysql_statement_backend::get_parameter_name(int index) const
-{
-    return names_.at(index);
 }
 
 std::string mysql_statement_backend::rewrite_for_procedure_call(

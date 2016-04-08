@@ -20,8 +20,6 @@
 #ifndef RIPPLE_RPC_HANDLERS_HANDLERS_H_INCLUDED
 #define RIPPLE_RPC_HANDLERS_HANDLERS_H_INCLUDED
 
-#include <ripple/rpc/handlers/LedgerHandler.h>
-
 namespace ripple {
 
 Json::Value doAccountCurrencies     (RPC::Context&);
@@ -38,9 +36,7 @@ Json::Value doCanDelete             (RPC::Context&);
 Json::Value doConnect               (RPC::Context&);
 Json::Value doConsensusInfo         (RPC::Context&);
 Json::Value doFeature               (RPC::Context&);
-Json::Value doFee                   (RPC::Context&);
 Json::Value doFetchInfo             (RPC::Context&);
-Json::Value doGatewayBalances       (RPC::Context&);
 Json::Value doGetCounts             (RPC::Context&);
 Json::Value doInternal              (RPC::Context&);
 Json::Value doLedgerAccept          (RPC::Context&);
@@ -66,10 +62,8 @@ Json::Value doServerState           (RPC::Context&); // for machines
 Json::Value doSessionClose          (RPC::Context&);
 Json::Value doSessionOpen           (RPC::Context&);
 Json::Value doSign                  (RPC::Context&);
-Json::Value doSignFor               (RPC::Context&);
 Json::Value doStop                  (RPC::Context&);
 Json::Value doSubmit                (RPC::Context&);
-Json::Value doSubmitMultiSigned     (RPC::Context&);
 Json::Value doSubscribe             (RPC::Context&);
 Json::Value doTransactionEntry      (RPC::Context&);
 Json::Value doTx                    (RPC::Context&);

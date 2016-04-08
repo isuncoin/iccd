@@ -20,7 +20,6 @@
 #ifndef RIPPLE_PROTOCOL_HASHPREFIX_H_INCLUDED
 #define RIPPLE_PROTOCOL_HASHPREFIX_H_INCLUDED
 
-#include <beast/hash/hash_append.h>
 #include <cstdint>
 
 namespace ripple {
@@ -85,27 +84,12 @@ public:
     /** inner transaction to sign */
     static HashPrefix const txSign;
 
-    /** inner transaction to multi-sign */
-    static HashPrefix const txMultiSign;
-
     /** validation for signing */
     static HashPrefix const validation;
 
     /** proposal for signing */
     static HashPrefix const proposal;
-
-    /** Manifest */
-    static HashPrefix const manifest;
 };
-
-template <class Hasher>
-void
-hash_append (Hasher& h, HashPrefix const& hp) noexcept
-{
-    using beast::hash_append;
-    hash_append(h,
-        static_cast<std::uint32_t>(hp));
-}
 
 } // ripple
 

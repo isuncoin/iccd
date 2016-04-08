@@ -27,6 +27,7 @@
 #include <beast/Config.h>
 #include <beast/strings/String.h>
 
+#include <beast/utility/noexcept.h>
 #include <string>
 #include <sstream>
 
@@ -50,7 +51,7 @@ public:
         you can use this to declare a type that is guaranteed to
         work cleanly.
     */
-    using value_type = double;
+    typedef double value_type;
 
     //==============================================================================
     /** Creates a RelativeTime.

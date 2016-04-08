@@ -24,9 +24,7 @@
 #include <ripple/protocol/Serializer.h>
 #include <ripple/protocol/STBase.h>
 #include <ripple/protocol/Issue.h>
-#include <ripple/protocol/IOUAmount.h>
-#include <ripple/protocol/XRPAmount.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 
@@ -44,20 +42,18 @@ class STAmount
     : public STBase
 {
 public:
-    using mantissa_type = std::uint64_t;
-    using exponent_type = int;
-    using rep = std::pair <mantissa_type, exponent_type>;
+    typedef std::uint64_t mantissa_type;
+    typedef int exponent_type;
+    typedef std::pair <mantissa_type, exponent_type> rep;
 
 private:
     Issue mIssue;
     mantissa_type mValue;
     exponent_type mOffset;
-    bool mIsNative;      // A shorthand for isXRP(mIssue).
+    bool mIsNative;      // A shorthand for isICC(mIssue).
     bool mIsNegative;
 
 public:
-    using value_type = STAmount;
-
     static const int cMinOffset = -96;
     static const int cMaxOffset = 80;
 
@@ -73,27 +69,21 @@ public:
 
     static std::uint64_t const uRateOne;
 
-    static STAmount const saZero;
-    static STAmount const saOne;
-
     //--------------------------------------------------------------------------
-    STAmount(SerialIter& sit, SField const& name);
 
     struct unchecked { };
 
-    // Do not call canonicalize
-    STAmount (SField const& name, Issue const& issue,
-        mantissa_type mantissa, exponent_type exponent,
-            bool native, bool negative, unchecked);
+    STAmount(SerialIter& sit, SField const& name);
 
-    STAmount (Issue const& issue,
-        mantissa_type mantissa, exponent_type exponent,
-            bool native, bool negative, unchecked);
-
-    // Call canonicalize
+    // Calls canonicalize
     STAmount (SField const& name, Issue const& issue,
         mantissa_type mantissa, exponent_type exponent,
             bool native, bool negative);
+
+    // Does not call canonicalize
+    STAmount (SField const& name, Issue const& issue,
+        mantissa_type mantissa, exponent_type exponent,
+            bool native, bool negative, unchecked);
 
     STAmount (SField const& name, std::int64_t mantissa);
 
@@ -105,20 +95,16 @@ public:
 
     STAmount (std::uint64_t mantissa = 0, bool negative = false);
 
-    STAmount (Issue const& issue, std::uint64_t mantissa = 0, int exponent = 0,
-        bool negative = false);
+    STAmount (Issue const& issue,
+        std::uint64_t mantissa = 0, int exponent = 0, bool negative = false);
 
     // VFALCO Is this needed when we have the previous signature?
-    STAmount (Issue const& issue, std::uint32_t mantissa, int exponent = 0,
-        bool negative = false);
+    STAmount (Issue const& issue,
+        std::uint32_t mantissa, int exponent = 0, bool negative = false);
 
     STAmount (Issue const& issue, std::int64_t mantissa, int exponent = 0);
 
     STAmount (Issue const& issue, int mantissa, int exponent = 0);
-
-    // Legacy support for new-style amounts
-    STAmount (IOUAmount const& amount, Issue const& issue);
-    STAmount (XRPAmount const& amount);
 
     STBase*
     copy (std::size_t n, void* buf) const override
@@ -139,10 +125,14 @@ private:
     std::unique_ptr<STAmount>
     construct (SerialIter&, SField const& name);
 
-    void set (std::int64_t v);
-    void canonicalize();
+    void
+    setSNValue (std::int64_t);
 
 public:
+    static
+    STAmount
+    createFromInt64 (SField const& n, std::int64_t v);
+
     //--------------------------------------------------------------------------
     //
     // Observers
@@ -157,7 +147,8 @@ public:
 
     // These three are deprecated
     Currency const& getCurrency() const { return mIssue.currency; }
-    AccountID const& getIssuer() const { return mIssue.account; }
+    Account const& getIssuer() const { return mIssue.account; }
+    bool isNative() const { return mIsNative; }
 
     int
     signum() const noexcept
@@ -174,14 +165,13 @@ public:
         return STAmount (mIssue);
     }
 
+    // VFALCO TODO This can be a free function or just call the
+    //             member on the issue.
+    std::string
+    getHumanCurrency() const;
+
     void
     setJson (Json::Value&) const;
-
-    STAmount const&
-    value() const noexcept
-    {
-        return *this;
-    }
 
     //--------------------------------------------------------------------------
     //
@@ -194,6 +184,9 @@ public:
         return *this != zero;
     }
 
+    bool isComparable (STAmount const&) const;
+    void throwComparable (STAmount const&) const;
+
     STAmount& operator+= (STAmount const&);
     STAmount& operator-= (STAmount const&);
 
@@ -203,17 +196,17 @@ public:
         return *this;
     }
 
-    STAmount& operator= (XRPAmount const& amount)
-    {
-        *this = STAmount (amount);
-        return *this;
-    }
+    friend STAmount operator+ (STAmount const& v1, STAmount const& v2);
+    friend STAmount operator- (STAmount const& v1, STAmount const& v2);
 
     //--------------------------------------------------------------------------
     //
     // Modification
     //
     //--------------------------------------------------------------------------
+
+    // VFALCO TODO Remove this, it is only called from the unit test
+    void roundSelf();
 
     void negate()
     {
@@ -223,8 +216,7 @@ public:
 
     void clear()
     {
-        // The -100 is used to allow 0 to sort less than a small positive values
-        // which have a negative exponent.
+        // VFALCO: Why -100?
         mOffset = mIsNative ? 0 : -100;
         mValue = 0;
         mIsNegative = false;
@@ -242,7 +234,7 @@ public:
         clear();
     }
 
-    void setIssuer (AccountID const& uIssuer)
+    void setIssuer (Account const& uIssuer)
     {
         mIssue.account = uIssuer;
         setIssue(mIssue);
@@ -250,6 +242,10 @@ public:
 
     /** Set the Issue for this amount and update mIsNative. */
     void setIssue (Issue const& issue);
+
+    // VFALCO TODO Rename to setValueOnly (it only sets mantissa and exponent)
+    //             Make this private
+    bool setValue (std::string const& sAmount);
 
     //--------------------------------------------------------------------------
     //
@@ -284,8 +280,8 @@ public:
         return (mValue == 0) && mIsNative;
     }
 
-    XRPAmount xrp () const;
-    IOUAmount iou () const;
+    void canonicalize();
+    void set (std::int64_t v);
 };
 
 //------------------------------------------------------------------------------
@@ -294,18 +290,15 @@ public:
 //
 //------------------------------------------------------------------------------
 
-STAmount
-amountFromRate (std::uint64_t uRate);
-
 // VFALCO TODO The parameter type should be Quality not uint64_t
 STAmount
 amountFromQuality (std::uint64_t rate);
 
 STAmount
-amountFromString (Issue const& issue, std::string const& amount);
+amountFromJson (SField const& name, Json::Value const& v);
 
 STAmount
-amountFromJson (SField const& name, Json::Value const& v);
+amountFromRate (std::uint64_t uRate);
 
 bool
 amountFromJsonNoThrow (STAmount& result, Json::Value const& jvSource);
@@ -330,36 +323,20 @@ isLegalNet (STAmount const& value)
 //------------------------------------------------------------------------------
 
 bool operator== (STAmount const& lhs, STAmount const& rhs);
+bool operator!= (STAmount const& lhs, STAmount const& rhs);
 bool operator<  (STAmount const& lhs, STAmount const& rhs);
+bool operator>  (STAmount const& lhs, STAmount const& rhs);
+bool operator<= (STAmount const& lhs, STAmount const& rhs);
+bool operator>= (STAmount const& lhs, STAmount const& rhs);
 
-inline
-bool
-operator!= (STAmount const& lhs, STAmount const& rhs)
-{
-    return !(lhs == rhs);
-}
+// native currency only
+bool operator<  (STAmount const& lhs, std::uint64_t rhs);
+bool operator>  (STAmount const& lhs, std::uint64_t rhs);
+bool operator<= (STAmount const& lhs, std::uint64_t rhs);
+bool operator>= (STAmount const& lhs, std::uint64_t rhs);
 
-inline
-bool
-operator> (STAmount const& lhs, STAmount const& rhs)
-{
-    return rhs < lhs;
-}
-
-inline
-bool
-operator<= (STAmount const& lhs, STAmount const& rhs)
-{
-    return !(rhs < lhs);
-}
-
-inline
-bool
-operator>= (STAmount const& lhs, STAmount const& rhs)
-{
-    return !(lhs < rhs);
-}
-
+STAmount operator+ (STAmount const& lhs, std::uint64_t rhs);
+STAmount operator- (STAmount const& lhs, std::uint64_t rhs);
 STAmount operator- (STAmount const& value);
 
 //------------------------------------------------------------------------------
@@ -367,9 +344,6 @@ STAmount operator- (STAmount const& value);
 // Arithmetic
 //
 //------------------------------------------------------------------------------
-
-STAmount operator+ (STAmount const& v1, STAmount const& v2);
-STAmount operator- (STAmount const& v1, STAmount const& v2);
 
 STAmount
 divide (STAmount const& v1, STAmount const& v2, Issue const& issue);
@@ -393,41 +367,20 @@ divRound (STAmount const& v1, STAmount const& v2,
 std::uint64_t
 getRate (STAmount const& offerOut, STAmount const& offerIn);
 
+// When the currency is ICC, the value in raw unsigned units.
+std::uint64_t
+getNValue(STAmount const& amount);
+
 //------------------------------------------------------------------------------
 
-inline bool isXRP(STAmount const& amount)
+inline bool isICC(STAmount const& amount)
 {
-    return isXRP (amount.issue().currency);
+    return isICC (amount.issue().currency);
 }
 
-/**
-    A utility function to compute (value)*(mul)/(div) while avoiding
-    overflow but keeping precision.
-*/
-std::uint64_t
-mulDiv(std::uint64_t value, std::uint64_t mul, std::uint64_t div);
-
-/**
-    A utility function to compute (value)*(mul)/(div) while avoiding
-    overflow but keeping precision. Will return the max uint64_t
-    value if mulDiv would overflow anyway.
-*/
-std::uint64_t
-mulDivNoThrow(std::uint64_t value, std::uint64_t mul, std::uint64_t div);
-
-template <class T1, class T2>
-void lowestTerms(T1& a,  T2& b)
-{
-    std::uint64_t x = a, y = b;
-    while (y != 0)
-    {
-        auto t = x % y;
-        x = y;
-        y = t;
-    }
-    a /= x;
-    b /= x;
-}
+// VFALCO TODO Make static member accessors for these in STAmount
+extern const STAmount saZero;
+extern const STAmount saOne;
 
 } // ripple
 

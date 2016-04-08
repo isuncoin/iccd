@@ -30,7 +30,7 @@
 namespace beast {
 namespace IP {
 
-using Port = std::uint16_t;
+typedef std::uint16_t Port;
 
 /** A version-independent IP address and port combination. */
 class Endpoint

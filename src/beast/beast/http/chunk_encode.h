@@ -26,7 +26,7 @@
 #include <cassert>
 #include <cstddef>
 #include <iterator>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 
 namespace beast {
 namespace http {

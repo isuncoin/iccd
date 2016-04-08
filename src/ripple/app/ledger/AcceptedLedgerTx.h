@@ -21,12 +21,8 @@
 #define RIPPLE_APP_LEDGER_ACCEPTEDLEDGERTX_H_INCLUDED
 
 #include <ripple/app/ledger/Ledger.h>
-#include <ripple/protocol/AccountID.h>
-#include <boost/container/flat_set.hpp>
 
 namespace ripple {
-
-class Logs;
 
 /**
     A transaction that is in a closed ledger.
@@ -50,34 +46,24 @@ class Logs;
 class AcceptedLedgerTx
 {
 public:
-    using pointer = std::shared_ptr <AcceptedLedgerTx>;
-    using ref = const pointer&;
+    typedef std::shared_ptr <AcceptedLedgerTx> pointer;
+    typedef const pointer& ref;
 
 public:
-    AcceptedLedgerTx (
-        std::shared_ptr<ReadView const> const& ledger,
-        std::shared_ptr<STTx const> const&,
-        std::shared_ptr<STObject const> const&,
-        AccountIDCache const&,
-        Logs&);
-    AcceptedLedgerTx (
-        std::shared_ptr<ReadView const> const&,
-        std::shared_ptr<STTx const> const&,
-        TER,
-        AccountIDCache const&,
-        Logs&);
+    AcceptedLedgerTx (Ledger::ref ledger, SerialIter& sit);
+    AcceptedLedgerTx (Ledger::ref ledger, STTx::ref,
+        TransactionMetaSet::ref);
+    AcceptedLedgerTx (Ledger::ref ledger, STTx::ref, TER result);
 
-    std::shared_ptr <STTx const> const& getTxn () const
+    STTx::ref getTxn () const
     {
         return mTxn;
     }
-    std::shared_ptr <TxMeta> const& getMeta () const
+    TransactionMetaSet::ref getMeta () const
     {
         return mMeta;
     }
-
-    boost::container::flat_set<AccountID> const&
-    getAffected() const
+    std::vector <RippleAddress> const& getAffected () const
     {
         return mAffected;
     }
@@ -114,15 +100,13 @@ public:
     }
 
 private:
-    std::shared_ptr<ReadView const> mLedger;
-    std::shared_ptr<STTx const> mTxn;
-    std::shared_ptr<TxMeta> mMeta;
+    Ledger::pointer                 mLedger;
+    STTx::pointer  mTxn;
+    TransactionMetaSet::pointer     mMeta;
     TER                             mResult;
-    boost::container::flat_set<AccountID> mAffected;
+    std::vector <RippleAddress>     mAffected;
     Blob        mRawMeta;
     Json::Value                     mJson;
-    AccountIDCache const& accountCache_;
-    Logs& logs_;
 
     void buildJson ();
 };

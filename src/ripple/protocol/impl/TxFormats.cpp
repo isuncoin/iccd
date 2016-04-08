@@ -18,6 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
+#include <beast/utility/static_initializer.h>
 #include <ripple/protocol/TxFormats.h>
 
 namespace ripple {
@@ -63,27 +64,7 @@ TxFormats::TxFormats ()
         << SOElement (sfPaths,               SOE_DEFAULT)
         << SOElement (sfInvoiceID,           SOE_OPTIONAL)
         << SOElement (sfDestinationTag,      SOE_OPTIONAL)
-        << SOElement (sfDeliverMin,          SOE_OPTIONAL)
         ;
-
-    add ("SuspendedPaymentCreate", ttSUSPAY_CREATE) <<
-        SOElement (sfDestination,       SOE_REQUIRED) <<
-        SOElement (sfAmount,            SOE_REQUIRED) <<
-        SOElement (sfDigest,            SOE_OPTIONAL) <<
-        SOElement (sfCancelAfter,       SOE_OPTIONAL) <<
-        SOElement (sfFinishAfter,       SOE_OPTIONAL) <<
-        SOElement (sfDestinationTag,    SOE_OPTIONAL);
-
-    add ("SuspendedPaymentFinish", ttSUSPAY_FINISH) <<
-        SOElement (sfOwner,               SOE_REQUIRED) <<
-        SOElement (sfOfferSequence,       SOE_REQUIRED) <<
-        SOElement (sfMethod,              SOE_OPTIONAL) <<
-        SOElement (sfDigest,              SOE_OPTIONAL) <<
-        SOElement (sfProof,               SOE_OPTIONAL);
-
-    add ("SuspendedPaymentCancel", ttSUSPAY_CANCEL) <<
-        SOElement (sfOwner,               SOE_REQUIRED) <<
-        SOElement (sfOfferSequence,       SOE_REQUIRED);
 
     add ("EnableAmendment", ttAMENDMENT)
         << SOElement (sfLedgerSequence,      SOE_OPTIONAL)
@@ -106,13 +87,6 @@ TxFormats::TxFormats ()
     add ("TicketCancel", ttTICKET_CANCEL)
         << SOElement (sfTicketID,            SOE_REQUIRED)
         ;
-
-    // The SignerEntries are optional because a SignerList is deleted by
-    // setting the SignerQuorum to zero and omitting SignerEntries.
-    add ("SignerListSet", ttSIGNER_LIST_SET)
-        << SOElement (sfSignerQuorum,        SOE_REQUIRED)
-        << SOElement (sfSignerEntries,       SOE_OPTIONAL)
-        ;
 }
 
 void TxFormats::addCommonFields (Item& item)
@@ -131,15 +105,15 @@ void TxFormats::addCommonFields (Item& item)
         << SOElement(sfMemos,               SOE_OPTIONAL)
         << SOElement(sfSigningPubKey,       SOE_REQUIRED)
         << SOElement(sfTxnSignature,        SOE_OPTIONAL)
-        << SOElement(sfSigners,             SOE_OPTIONAL) // submit_multisigned
         ;
 }
 
 TxFormats const&
 TxFormats::getInstance ()
 {
-    static TxFormats const instance;
-    return instance;
+    static beast::static_initializer<
+        TxFormats> instance;
+    return *instance;
 }
 
 } // ripple

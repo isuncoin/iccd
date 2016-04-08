@@ -18,15 +18,8 @@
 //==============================================================================
 
 #include <BeastConfig.h>
+#include <ripple/app/peers/UniqueNodeList.h>
 #include <beast/utility/make_lock.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/UniqueNodeList.h>
-#include <ripple/json/json_value.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/Handler.h>
 
 namespace ripple {
 
@@ -36,7 +29,7 @@ namespace ripple {
 // }
 Json::Value doUnlAdd (RPC::Context& context)
 {
-    auto lock = beast::make_lock(context.app.getMasterMutex());
+    auto lock = beast::make_lock(getApp().getMasterMutex());
 
     std::string strNode = context.params.isMember (jss::node)
             ? context.params[jss::node].asString () : "";
@@ -47,13 +40,13 @@ Json::Value doUnlAdd (RPC::Context& context)
 
     if (raNodePublic.setNodePublic (strNode))
     {
-        context.app.getUNL ().nodeAddPublic (
+        getApp().getUNL ().nodeAddPublic (
             raNodePublic, UniqueNodeList::vsManual, strComment);
         return RPC::makeObjectValue ("adding node by public key");
     }
     else
     {
-        context.app.getUNL ().nodeAddDomain (
+        getApp().getUNL ().nodeAddDomain (
             strNode, UniqueNodeList::vsManual, strComment);
         return RPC::makeObjectValue ("adding node by domain");
     }

@@ -70,9 +70,9 @@ public:
 
             if (decoded.wasOk ())
             {
-                std::shared_ptr<NodeObject> const object (decoded.createObject ());
+                NodeObject::Ptr const object (decoded.createObject ());
 
-                expect (isSame(batch[i], object), "Should be clones");
+                expect (batch [i]->isCloneOf (object), "Should be clones");
             }
         }
     }

@@ -20,14 +20,12 @@
 #ifndef RIPPLE_APP_PEERS_PEERSET_H_INCLUDED
 #define RIPPLE_APP_PEERS_PEERSET_H_INCLUDED
 
-#include <ripple/app/main/Application.h>
 #include <ripple/basics/Log.h>
 #include <ripple/core/Job.h>
 #include <ripple/overlay/Peer.h>
 #include <beast/chrono/abstract_clock.h>
 #include <beast/utility/Journal.h>
 #include <boost/asio/deadline_timer.hpp>
-#include <mutex>
 
 namespace ripple {
 
@@ -49,7 +47,7 @@ namespace ripple {
 class PeerSet
 {
 public:
-    using clock_type = beast::abstract_clock <std::chrono::steady_clock>;
+    typedef beast::abstract_clock <std::chrono::steady_clock> clock_type;
 
     /** Returns the hash of the data we want. */
     uint256 const& getHash () const
@@ -81,6 +79,7 @@ public:
     void progress ()
     {
         mProgress = true;
+        mAggressive = false;
     }
 
     void touch ()
@@ -98,31 +97,25 @@ public:
         @return `true` If the peer was added
     */
     bool insert (Peer::ptr const&);
-
+    
     virtual bool isDone () const
     {
         return mComplete || mFailed;
     }
 
-    Application&
-    app()
-    {
-        return app_;
-    }
-
 private:
-    static void timerEntry (
-        std::weak_ptr<PeerSet>, const boost::system::error_code& result,
-        beast::Journal j);
-    static void timerJobEntry (std::shared_ptr<PeerSet>);
+    static void TimerEntry (std::weak_ptr<PeerSet>, const boost::system::error_code& result);
+    static void TimerJobEntry (Job&, std::shared_ptr<PeerSet>);
 
 protected:
-    using ScopedLockType = std::unique_lock <std::recursive_mutex>;
+    // VFALCO TODO try to make some of these private
+    typedef RippleRecursiveMutex LockType;
+    typedef std::unique_lock <LockType> ScopedLockType;
 
-    PeerSet (Application& app, uint256 const& hash, int interval, bool txnData,
+    PeerSet (uint256 const& hash, int interval, bool txnData,
         clock_type& clock, beast::Journal journal);
 
-    virtual ~PeerSet() = 0;
+    virtual ~PeerSet () = 0;
 
     virtual void newPeer (Peer::ptr const&) = 0;
 
@@ -155,17 +148,17 @@ protected:
     std::size_t getPeerCount () const;
 
 protected:
-    Application& app_;
     beast::Journal m_journal;
     clock_type& m_clock;
 
-    std::recursive_mutex mLock;
+    LockType mLock;
 
     uint256 mHash;
     int mTimerInterval;
     int mTimeouts;
     bool mComplete;
     bool mFailed;
+    bool mAggressive;
     bool mTxnData;
     clock_type::time_point mLastAction;
     bool mProgress;
@@ -174,9 +167,9 @@ protected:
     boost::asio::deadline_timer mTimer;
 
     // VFALCO TODO Verify that these are used in the way that the names suggest.
-    using PeerIdentifier = Peer::id_t;
-    using ReceivedChunkCount = int;
-    using PeerSetMap = hash_map <PeerIdentifier, ReceivedChunkCount>;
+    typedef Peer::id_t PeerIdentifier;
+    typedef int ReceivedChunkCount;
+    typedef hash_map <PeerIdentifier, ReceivedChunkCount> PeerSetMap;
 
     PeerSetMap mPeers;
 };

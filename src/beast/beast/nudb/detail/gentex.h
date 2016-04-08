@@ -20,6 +20,7 @@
 #ifndef BEAST_NUDB_DETAIL_GENTEX_H_INCLUDED
 #define BEAST_NUDB_DETAIL_GENTEX_H_INCLUDED
 
+#include <beast/utility/noexcept.h>
 #include <condition_variable>
 #include <cstddef>
 #include <mutex>

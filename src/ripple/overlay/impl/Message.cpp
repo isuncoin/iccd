@@ -19,7 +19,6 @@
 
 #include <BeastConfig.h>
 #include <ripple/overlay/Message.h>
-#include <ripple/overlay/impl/TrafficCount.h>
 #include <cstdint>
 
 namespace ripple {
@@ -38,9 +37,6 @@ Message::Message (::google::protobuf::Message const& message, int type)
     {
         message.SerializeToArray (&mBuffer [Message::kHeaderBytes], messageBytes);
     }
-
-    mCategory = static_cast<int>(TrafficCount::categorize
-        (message, type, false));
 }
 
 bool Message::operator== (Message const& other) const

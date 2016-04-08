@@ -18,7 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/basics/chrono.h>
 #include <ripple/peerfinder/impl/Livecache.h>
 #include <beast/unit_test/suite.h>
 #include <beast/chrono/manual_clock.h>
@@ -29,7 +28,7 @@ namespace PeerFinder {
 class Livecache_test : public beast::unit_test::suite
 {
 public:
-    TestStopwatch m_clock;
+    beast::manual_clock <std::chrono::steady_clock> m_clock;
 
     // Add the address as an endpoint
     template <class C>

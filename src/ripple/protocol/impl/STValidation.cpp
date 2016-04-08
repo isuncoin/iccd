@@ -57,16 +57,20 @@ STValidation::STValidation (
         setFlag (kFullFlag);
 }
 
-uint256 STValidation::sign (RippleAddress const& raPriv)
+void STValidation::sign (RippleAddress const& raPriv)
+{
+    uint256 signingHash;
+    sign (signingHash, raPriv);
+}
+
+void STValidation::sign (uint256& signingHash, RippleAddress const& raPriv)
 {
     setFlag (vfFullyCanonicalSig);
 
-    auto signingHash = getSigningHash ();
+    signingHash = getSigningHash ();
     Blob signature;
     raPriv.signNodePrivate (signingHash, signature);
     setFieldVL (sfSignature, signature);
-
-    return signingHash;
 }
 
 uint256 STValidation::getSigningHash () const

@@ -30,7 +30,7 @@
 #include <ripple/nodestore/impl/EncodedBlob.h>
 #include <beast/threads/Thread.h>
 #include <atomic>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 namespace NodeStore {
@@ -136,7 +136,7 @@ public:
 
         // overrride OptimizeLevelStyleCompaction
         options.min_write_buffer_number_to_merge = 1;
-
+        
         rocksdb::BlockBasedTableOptions table_options;
         // Use hash index
         table_options.index_type =
@@ -145,7 +145,7 @@ public:
             rocksdb::NewBloomFilterPolicy(10));
         options.table_factory.reset(
             NewBlockBasedTableFactory(table_options));
-
+        
         // Higher values make reads slower
         // table_options.block_size = 4096;
 
@@ -179,7 +179,7 @@ public:
     }
 
     std::string
-    getName() override
+    getName()
     {
         return m_name;
     }
@@ -201,7 +201,7 @@ public:
     //--------------------------------------------------------------------------
 
     Status
-    fetch (void const* key, std::shared_ptr<NodeObject>* pObject) override
+    fetch (void const* key, NodeObject::Ptr* pObject)
     {
         pObject->reset ();
 
@@ -257,7 +257,7 @@ public:
     }
 
     void
-    store (std::shared_ptr<NodeObject> const& object) override
+    store (NodeObject::ref object)
     {
         storeBatch(Batch{object});
     }
@@ -270,10 +270,10 @@ public:
     }
 
     void
-    storeBatch (Batch const& batch) override
+    storeBatch (Batch const& batch)
     {
         rocksdb::WriteBatch wb;
-
+ 
         EncodedBlob encoded;
 
         for (auto const& e : batch)
@@ -291,7 +291,7 @@ public:
 
         // Crucial to ensure good write speed and non-blocking writes to memtable
         options.disableWAL = true;
-
+        
         auto ret = m_db->Write (options, &wb);
 
         if (!ret.ok ())
@@ -299,7 +299,7 @@ public:
     }
 
     void
-    for_each (std::function <void(std::shared_ptr<NodeObject>)> f) override
+    for_each (std::function <void(NodeObject::Ptr)> f)
     {
         rocksdb::ReadOptions const options;
 
@@ -321,8 +321,7 @@ public:
                 {
                     // Uh oh, corrupted data!
                     if (m_journal.fatal) m_journal.fatal <<
-                        "Corrupt NodeObject #" <<
-                        from_hex_text<uint256>(it->key ().data ());
+                        "Corrupt NodeObject #" << uint256 (it->key ().data ());
                 }
             }
             else
@@ -336,7 +335,7 @@ public:
     }
 
     int
-    getWriteLoad () override
+    getWriteLoad ()
     {
         return 0;
     }

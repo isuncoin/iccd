@@ -7,10 +7,9 @@
 //
 
 #define SOCI_MYSQL_SOURCE
-#include "soci/mysql/soci-mysql.h"
+#include "soci-mysql.h"
 #include "common.h"
-#include "soci/soci-platform.h"
-#include "soci-dtocstr.h"
+#include <soci-platform.h>
 // std
 #include <ciso646>
 #include <cstddef>
@@ -21,6 +20,10 @@
 #include <limits>
 #include <string>
 #include <vector>
+
+#ifdef _MSC_VER
+#pragma warning(disable:4355)
+#endif
 
 using namespace soci;
 using namespace soci::details;
@@ -141,10 +144,10 @@ void mysql_vector_use_type_backend::pre_use(indicator const *ind)
                             "not supported by the MySQL server.");
                     }
 
-                    std::string const s = double_to_cstring(v[i]);
+                    std::size_t const bufSize = 100;
+                    buf = new char[bufSize];
 
-                    buf = new char[s.size() + 1];
-                    std::strcpy(buf, s.c_str());
+                    snprintf(buf, bufSize, "%.20g", v[i]);
                 }
                 break;
             case x_stdtm:

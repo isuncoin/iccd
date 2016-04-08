@@ -18,25 +18,16 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/core/Config.h>
-#include <ripple/net/RPCErr.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/Indexes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
 #include <beast/utility/make_lock.h>
 
 namespace ripple {
 
 Json::Value doLedgerAccept (RPC::Context& context)
 {
-    auto lock = beast::make_lock(context.app.getMasterMutex());
+    auto lock = beast::make_lock(getApp().getMasterMutex());
     Json::Value jvResult;
 
-    if (!context.app.config().RUN_STANDALONE)
+    if (!getConfig ().RUN_STANDALONE)
     {
         jvResult[jss::error] = "notStandAlone";
     }
@@ -44,8 +35,8 @@ Json::Value doLedgerAccept (RPC::Context& context)
     {
         context.netOps.acceptLedger ();
 
-        jvResult[jss::ledger_current_index] =
-            context.ledgerMaster.getCurrentLedgerIndex ();
+        jvResult[jss::ledger_current_index]
+                = context.netOps.getCurrentLedgerID ();
     }
 
     return jvResult;

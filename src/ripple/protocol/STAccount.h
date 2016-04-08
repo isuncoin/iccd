@@ -20,7 +20,6 @@
 #ifndef RIPPLE_PROTOCOL_STACCOUNT_H_INCLUDED
 #define RIPPLE_PROTOCOL_STACCOUNT_H_INCLUDED
 
-#include <ripple/protocol/AccountID.h>
 #include <ripple/protocol/RippleAddress.h>
 #include <ripple/protocol/STBlob.h>
 #include <string>
@@ -31,14 +30,12 @@ class STAccount final
     : public STBlob
 {
 public:
-    using value_type = AccountID;
-
     STAccount (SField const& n, Buffer&& v)
             : STBlob (n, std::move(v))
     {
         ;
     }
-    STAccount (SField const& n, AccountID const& v);
+    STAccount (SField const& n, Account const& v);
     STAccount (SField const& n) : STBlob (n)
     {
         ;
@@ -66,23 +63,10 @@ public:
     {
         return STI_ACCOUNT;
     }
-
     std::string getText () const override;
 
-    STAccount&
-    operator= (value_type const& value)
-    {
-        setValueH160(value);
-        return *this;
-    }
-
-    value_type
-    value() const noexcept
-    {
-        AccountID result;
-        getValueH160(result);
-        return result;
-    }
+    RippleAddress getValueNCA () const;
+    void setValueNCA (RippleAddress const& nca);
 
     template <typename Tag>
     void setValueH160 (base_uint<160, Tag> const& v)
@@ -91,10 +75,6 @@ public:
         assert (peekValue ().size () == (160 / 8));
     }
 
-    // VFALCO This is a clumsy interface, it should return
-    //        the value. And it should not be possible to
-    //        have anything other than a uint160 in here.
-    //        The base_uint tag should always be `AccountIDTag`.
     template <typename Tag>
     bool getValueH160 (base_uint<160, Tag>& v) const
     {
@@ -105,6 +85,9 @@ public:
     }
 
     bool isValueH160 () const;
+
+private:
+    static STAccount* construct (SerialIter&, SField const&);
 };
 
 } // ripple

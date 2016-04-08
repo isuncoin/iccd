@@ -43,7 +43,7 @@ namespace beast
 */
 class  MemoryOutputStream
     : public OutputStream
-{
+{    
 public:
     //==============================================================================
     /** Creates an empty memory stream, ready to be written into.
@@ -117,7 +117,7 @@ public:
         capacity off the block, so that its length matches the amount of actual data that
         has been written so far.
     */
-    void flush() override;
+    void flush();
 
     bool write (const void*, size_t) override;
     std::int64_t getPosition() override                                 { return position; }

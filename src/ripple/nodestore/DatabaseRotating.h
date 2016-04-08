@@ -47,7 +47,7 @@ public:
             std::shared_ptr <Backend> const& newBackend) = 0;
 
     /** Ensure that node is in writableBackend */
-    virtual std::shared_ptr<NodeObject> fetchNode (uint256 const& hash) = 0;
+    virtual NodeObject::Ptr fetchNode (uint256 const& hash) = 0;
 };
 
 }

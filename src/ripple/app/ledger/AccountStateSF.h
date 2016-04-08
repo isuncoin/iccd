@@ -20,22 +20,16 @@
 #ifndef RIPPLE_APP_LEDGER_ACCOUNTSTATESF_H_INCLUDED
 #define RIPPLE_APP_LEDGER_ACCOUNTSTATESF_H_INCLUDED
 
-#include <ripple/app/main/Application.h>
 #include <ripple/shamap/SHAMapSyncFilter.h>
 
 namespace ripple {
 
 // This class is only needed on add functions
 // sync filter for account state nodes during ledger sync
-class AccountStateSF
-    : public SHAMapSyncFilter
+class AccountStateSF : public SHAMapSyncFilter
 {
-private:
-    Application& app_;
-
 public:
-    explicit
-    AccountStateSF (Application& app);
+    AccountStateSF();
 
     // Note that the nodeData is overwritten by this call
     void gotNode (bool fromFilter,

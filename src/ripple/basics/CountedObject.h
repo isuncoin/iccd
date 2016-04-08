@@ -20,6 +20,8 @@
 #ifndef RIPPLE_BASICS_COUNTEDOBJECT_H_INCLUDED
 #define RIPPLE_BASICS_COUNTEDOBJECT_H_INCLUDED
 
+#include <beast/utility/noexcept.h>
+#include <beast/utility/static_initializer.h>
 #include <atomic>
 #include <string>
 #include <utility>
@@ -33,8 +35,8 @@ class CountedObjects
 public:
     static CountedObjects& getInstance ();
 
-    using Entry = std::pair <std::string, int>;
-    using List = std::vector <Entry>;
+    typedef std::pair <std::string, int> Entry;
+    typedef std::vector <Entry> List;
 
     List getCounts (int minimumThreshold) const;
 
@@ -134,8 +136,8 @@ private:
 private:
     static Counter& getCounter()
     {
-        static Counter c;
-        return c;
+        static beast::static_initializer<Counter> c;
+        return *c;
     }
 };
 

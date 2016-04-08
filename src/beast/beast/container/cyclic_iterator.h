@@ -61,7 +61,7 @@ struct cyclic_iterator_category<
         std::forward_iterator_tag
 >
 {
-        using type = std::forward_iterator_tag;
+        typedef std::forward_iterator_tag type;
 };
 
 template<>
@@ -69,7 +69,7 @@ struct cyclic_iterator_category<
         std::bidirectional_iterator_tag
 >
 {
-        using type = std::bidirectional_iterator_tag;
+        typedef std::bidirectional_iterator_tag type;
 };
 
 template<>
@@ -77,7 +77,7 @@ struct cyclic_iterator_category<
         std::random_access_iterator_tag
 >
 {
-        using type = std::bidirectional_iterator_tag;
+        typedef std::bidirectional_iterator_tag type;
 };
 
 }
@@ -94,7 +94,7 @@ template<
 >
 struct cyclic_iterator_base
 {
-        using type = boost::iterator_facade<
+        typedef boost::iterator_facade<
                 cyclic_iterator<
                         ContainerIterator
                 >,
@@ -109,13 +109,13 @@ struct cyclic_iterator_base
                 typename std::iterator_traits<
                         ContainerIterator
                 >::reference
-        >;
+        > type;
 };
 
 }
 
 //
-// cyclic_iterator_decl.hpp
+// cyclic_iterator_decl.hpp 
 //
 
 /**
@@ -153,39 +153,39 @@ public:
     /**
     \brief The base type which is a <code>boost::iterator_facade</code>
     */
-    using base_type = typename detail::cyclic_iterator_base<
+    typedef typename detail::cyclic_iterator_base<
         ContainerIterator
-    >::type;
+    >::type base_type;
 
     /**
     \brief The underlying iterator type
     */
-    using container_iterator_type = ContainerIterator;
+    typedef ContainerIterator container_iterator_type;
 
     /**
     \brief The value type adapted from \a ContainerIterator
     */
-    using value_type = typename base_type::value_type;
+    typedef typename base_type::value_type value_type;
 
     /**
     \brief The reference type adapted from \a ContainerIterator
     */
-    using reference = typename base_type::reference;
+    typedef typename base_type::reference reference;
 
     /**
     \brief The pointer type adapted from \a ContainerIterator
     */
-    using pointer = typename base_type::pointer;
+    typedef typename base_type::pointer pointer;
 
     /**
     \brief The difference type adapted from \a ContainerIterator
     */
-    using difference_type = typename base_type::difference_type;
+    typedef typename base_type::difference_type difference_type;
 
     /**
     \brief The iterator category, either Forward or Bidirectional
     */
-    using iterator_category = typename base_type::iterator_category;
+    typedef typename base_type::iterator_category iterator_category;
 
     /**
     \brief Creates a singular iterator

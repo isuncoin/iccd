@@ -20,43 +20,33 @@
 #ifndef RIPPLE_APP_PATHS_PATHREQUESTS_H_INCLUDED
 #define RIPPLE_APP_PATHS_PATHREQUESTS_H_INCLUDED
 
-#include <ripple/app/main/Application.h>
 #include <ripple/app/paths/PathRequest.h>
 #include <ripple/app/paths/RippleLineCache.h>
 #include <ripple/core/Job.h>
 #include <atomic>
-#include <mutex>
 
 namespace ripple {
 
 class PathRequests
 {
 public:
-    PathRequests (Application& app,
-            beast::Journal journal, beast::insight::Collector::ptr const& collector)
-        : app_ (app)
-        , mJournal (journal)
+    PathRequests (beast::Journal journal, beast::insight::Collector::ptr const& collector)
+        : mJournal (journal)
         , mLastIdentifier (0)
     {
         mFast = collector->make_event ("pathfind_fast");
         mFull = collector->make_event ("pathfind_full");
     }
 
-    void updateAll (std::shared_ptr<ReadView const> const& ledger,
+    void updateAll (const std::shared_ptr<Ledger>& ledger,
                     Job::CancelCallback shouldCancel);
 
     RippleLineCache::pointer getLineCache (
-        std::shared_ptr <ReadView const> const& ledger, bool authoritative);
+        Ledger::pointer& ledger, bool authoritative);
 
     Json::Value makePathRequest (
         std::shared_ptr <InfoSub> const& subscriber,
-        std::shared_ptr<ReadView const> const& ledger,
-        Json::Value const& request);
-
-    Json::Value makeLegacyPathRequest (
-        PathRequest::pointer& req,
-        std::function <void (void)> completion,
-        std::shared_ptr<ReadView const> const& inLedger,
+        const std::shared_ptr<Ledger>& ledger,
         Json::Value const& request);
 
     void reportFast (int milliseconds)
@@ -70,9 +60,6 @@ public:
     }
 
 private:
-    void insertPathRequest (PathRequest::pointer const&);
-
-    Application& app_;
     beast::Journal                   mJournal;
 
     beast::insight::Event            mFast;
@@ -86,8 +73,9 @@ private:
 
     std::atomic<int>                 mLastIdentifier;
 
-    using ScopedLockType = std::lock_guard <std::recursive_mutex>;
-    std::recursive_mutex mLock;
+    typedef RippleRecursiveMutex     LockType;
+    typedef std::lock_guard <LockType> ScopedLockType;
+    LockType                         mLock;
 
 };
 

@@ -115,11 +115,12 @@ EndpointPtr04  WebSocket04::makeEndpoint (HandlerPtr&& handler)
 template <>
 void ConnectionImpl <WebSocket04>::setPingTimer ()
 {
-    if (pingFreq_ <= 0)
+    auto freq = getConfig ().WEBSOCKET_PING_FREQ;
+    if (freq <= 0)
         return;
     if (auto con = m_connection.lock ())
     {
-        auto t = boost::posix_time::seconds (pingFreq_);
+        auto t = boost::posix_time::seconds (freq);
         auto ms = t.total_milliseconds();
         con->set_timer (
             ms,
@@ -138,10 +139,10 @@ boost::asio::io_service::strand& WebSocket04::getStrand (Connection& con)
 template <>
 void Server <WebSocket04>::listen()
 {
-    endpoint_->listen (desc_.port.ip, desc_.port.port);
-    endpoint_->start_accept();
-    auto c = endpoint_->get_io_service ().run ();
-    JLOG (j_.warning)
+    m_endpoint->listen (desc_.port.ip, desc_.port.port);
+    m_endpoint->start_accept();
+    auto c = m_endpoint->get_io_service ().run ();
+    WriteLog (lsWARNING, WebSocket)
             << "Server run with: '" << c;
 
 }

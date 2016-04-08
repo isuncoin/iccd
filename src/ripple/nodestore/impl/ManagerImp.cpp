@@ -23,7 +23,7 @@
 #include <ripple/nodestore/impl/DatabaseRotatingImp.h>
 #include <ripple/basics/StringUtilities.h>
 #include <beast/utility/ci_char_traits.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 #include <stdexcept>
 
 namespace ripple {
@@ -32,8 +32,8 @@ namespace NodeStore {
 ManagerImp&
 ManagerImp::instance()
 {
-    static ManagerImp _;
-    return _;
+    static beast::static_initializer<ManagerImp> _;
+    return _.get();
 }
 
 void
@@ -91,17 +91,19 @@ ManagerImp::make_Database (
     Scheduler& scheduler,
     beast::Journal journal,
     int readThreads,
-    Section const& backendParameters)
+    Section const& backendParameters,
+    Section fastBackendParameters)
 {
-    return std::make_unique <DatabaseImp> (
-        name,
-        scheduler,
-        readThreads,
-        make_Backend (
-            backendParameters,
-            scheduler,
-            journal),
-        journal);
+    std::unique_ptr <Backend> backend (make_Backend (
+        backendParameters, scheduler, journal));
+
+    std::unique_ptr <Backend> fastBackend (
+        (fastBackendParameters.size () > 0)
+            ? make_Backend (fastBackendParameters, scheduler, journal)
+            : nullptr);
+
+    return std::make_unique <DatabaseImp> (name, scheduler, readThreads,
+        std::move (backend), std::move (fastBackend), journal);
 }
 
 std::unique_ptr <DatabaseRotating>
@@ -111,15 +113,12 @@ ManagerImp::make_DatabaseRotating (
         std::int32_t readThreads,
         std::shared_ptr <Backend> writableBackend,
         std::shared_ptr <Backend> archiveBackend,
+        std::unique_ptr <Backend> fastBackend,
         beast::Journal journal)
 {
-    return std::make_unique <DatabaseRotatingImp> (
-        name,
-        scheduler,
-        readThreads,
-        writableBackend,
-        archiveBackend,
-        journal);
+    return std::make_unique <DatabaseRotatingImp> (name, scheduler,
+            readThreads, writableBackend, archiveBackend,
+            std::move (fastBackend), journal);
 }
 
 Factory*

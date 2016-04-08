@@ -18,14 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/core/Config.h>
-#include <ripple/net/RPCErr.h>
 #include <ripple/overlay/Overlay.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/Handler.h>
 #include <beast/utility/make_lock.h>
 
 namespace ripple {
@@ -37,8 +30,8 @@ namespace ripple {
 // XXX Might allow domain for manual connections.
 Json::Value doConnect (RPC::Context& context)
 {
-    auto lock = beast::make_lock(context.app.getMasterMutex());
-    if (context.app.config().RUN_STANDALONE)
+    auto lock = beast::make_lock(getApp().getMasterMutex());
+    if (getConfig ().RUN_STANDALONE)
         return "cannot connect in standalone mode";
 
     if (!context.params.isMember (jss::ip))
@@ -61,7 +54,7 @@ Json::Value doConnect (RPC::Context& context)
         context.params[jss::ip].asString ());
 
     if (! is_unspecified (ip))
-        context.app.overlay ().connect (ip.at_port(iPort));
+        getApp().overlay ().connect (ip.at_port(iPort));
 
     return RPC::makeObjectValue ("connecting");
 }

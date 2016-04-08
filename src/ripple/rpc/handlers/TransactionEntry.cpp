@@ -18,10 +18,6 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/LookupLedger.h>
 
 namespace ripple {
 
@@ -34,8 +30,11 @@ namespace ripple {
 // means any ledger.
 Json::Value doTransactionEntry (RPC::Context& context)
 {
-    std::shared_ptr <ReadView const>     lpLedger;
-    Json::Value jvResult = RPC::lookupLedger (lpLedger, context);
+    Ledger::pointer     lpLedger;
+    Json::Value jvResult = RPC::lookupLedger (
+        context.params,
+        lpLedger,
+        context.netOps);
 
     if (!lpLedger)
         return jvResult;
@@ -65,18 +64,18 @@ Json::Value doTransactionEntry (RPC::Context& context)
         }
         else
         {
-            TxMeta::pointer tmTrans;
+            Transaction::pointer        tpTrans;
+            TransactionMetaSet::pointer tmTrans;
 
-            auto tx = lpLedger->txRead (uTransID);
-            if (!tx.first)
+            if (!lpLedger->getTransaction (uTransID, tpTrans, tmTrans))
             {
                 jvResult[jss::error]   = "transactionNotFound";
             }
             else
             {
-                jvResult[jss::tx_json]     = tx.first->getJson (0);
-                if (tx.second)
-                    jvResult[jss::metadata]    = tx.second->getJson (0);
+                jvResult[jss::tx_json]     = tpTrans->getJson (0);
+                if (tmTrans)
+                    jvResult[jss::metadata]    = tmTrans->getJson (0);
                 // 'accounts'
                 // 'engine_...'
                 // 'ledger_...'

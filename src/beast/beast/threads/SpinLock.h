@@ -25,6 +25,7 @@
 #define BEAST_THREADS_SPINLOCK_H_INCLUDED
 
 #include <beast/threads/UnlockGuard.h>
+#include <beast/utility/noexcept.h>
 #include <atomic>
 #include <cassert>
 #include <mutex>
@@ -49,10 +50,10 @@ class SpinLock
 {
 public:
     /** Provides the type of scoped lock to use for locking a SpinLock. */
-    using ScopedLockType = std::lock_guard <SpinLock>;
+    typedef std::lock_guard <SpinLock> ScopedLockType;
 
     /** Provides the type of scoped unlocker to use with a SpinLock. */
-    using ScopedUnlockType = UnlockGuard <SpinLock>;
+    typedef UnlockGuard <SpinLock>     ScopedUnlockType;
 
     SpinLock()
         : m_lock (0)

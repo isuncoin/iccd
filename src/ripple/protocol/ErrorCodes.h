@@ -62,7 +62,6 @@ enum error_code_i
     rpcACT_NOT_FOUND,
     rpcINSUF_FUNDS,
     rpcLGR_NOT_FOUND,
-    rpcLGR_NOT_VALIDATED,
     rpcMASTER_DISABLED,
     rpcNO_ACCOUNT,
     rpcNO_PATH,
@@ -91,7 +90,6 @@ enum error_code_i
     rpcDST_ACT_MALFORMED,
     rpcDST_ACT_MISSING,
     rpcDST_AMT_MALFORMED,
-    rpcDST_AMT_MISSING,
     rpcDST_ISR_MALFORMED,
     rpcGETS_ACT_MALFORMED,
     rpcGETS_AMT_MALFORMED,
@@ -102,8 +100,6 @@ enum error_code_i
     rpcPAYS_AMT_MALFORMED,
     rpcPORT_MALFORMED,
     rpcPUBLIC_MALFORMED,
-    rpcSIGN_FOR_MALFORMED,
-    rpcSENDMAX_MALFORMED,
     rpcSRC_ACT_MALFORMED,
     rpcSRC_ACT_MISSING,
     rpcSRC_ACT_NOT_FOUND,
@@ -263,10 +259,7 @@ inline Json::Value expected_field_error (
 /** Returns `true` if the json contains an rpc error specification. */
 bool contains_error (Json::Value const& json);
 
-} // RPC
-
-/** Returns a single string with the contents of an RPC error. */
-std::string rpcErrorString(Json::Value const& jv);
+}
 
 }
 

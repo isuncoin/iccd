@@ -25,7 +25,7 @@
 namespace beast {
 
 /** An abstract ostream for `char`. */
-using abstract_ostream = basic_abstract_ostream <char>;
+typedef basic_abstract_ostream <char> abstract_ostream;
 
 }
 

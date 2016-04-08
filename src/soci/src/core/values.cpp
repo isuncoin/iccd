@@ -6,8 +6,8 @@
 //
 
 #define SOCI_SOURCE
-#include "soci/values.h"
-#include "soci/row.h"
+#include "values.h"
+#include "row.h"
 
 #include <cstddef>
 #include <map>

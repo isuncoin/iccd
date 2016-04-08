@@ -76,21 +76,21 @@ private:
         }
     };
 
-    using list_t = boost::intrusive::make_list <element,
+    typedef boost::intrusive::make_list <element,
         boost::intrusive::constant_time_size <false>
-            >::type;
+            >::type list_t;
 
-    using set_t = boost::intrusive::make_set <element,
+    typedef boost::intrusive::make_set <element,
         boost::intrusive::constant_time_size <true>
-            >::type;
+            >::type set_t;
 
     list_t list_;
     set_t set_;
 
 public:
-    using iterator = boost::transform_iterator <transform,
-        list_t::const_iterator>;
-    using const_iterator = iterator;
+    typedef boost::transform_iterator <transform,
+        list_t::const_iterator> iterator;
+    typedef iterator const_iterator;
 
     ~headers()
     {

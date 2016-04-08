@@ -6,13 +6,11 @@
 //
 
 #define SOCI_POSTGRESQL_SOURCE
-#include "soci/soci-platform.h"
-#include "soci/postgresql/soci-postgresql.h"
-#include "soci-cstrtod.h"
+#include <soci-platform.h>
+#include "soci-postgresql.h"
 #include "common.h"
-#include "soci/rowid.h"
-#include "soci/blob.h"
-#include "soci-exchange-cast.h"
+#include "rowid.h"
+#include "blob.h"
 #include <libpq/libpq-fs.h> // libpq
 #include <cctype>
 #include <cstdio>
@@ -89,29 +87,53 @@ void postgresql_standard_into_type_backend::post_fetch(
         switch (type_)
         {
         case x_char:
-            exchange_type_cast<x_char>(data_) = *buf;
+            {
+                char * dest = static_cast<char *>(data_);
+                *dest = *buf;
+            }
             break;
         case x_stdstring:
-            exchange_type_cast<x_stdstring>(data_) = buf;
+            {
+                std::string * dest = static_cast<std::string *>(data_);
+                dest->assign(buf);
+            }
             break;
         case x_short:
-            exchange_type_cast<x_short>(data_) = string_to_integer<short>(buf);
+            {
+                short * dest = static_cast<short *>(data_);
+                *dest = string_to_integer<short>(buf);
+            }
             break;
         case x_integer:
-            exchange_type_cast<x_integer>(data_) = string_to_integer<int>(buf);
+            {
+                int * dest = static_cast<int *>(data_);
+                *dest = string_to_integer<int>(buf);
+            }
             break;
         case x_long_long:
-            exchange_type_cast<x_long_long>(data_) = string_to_integer<long long>(buf);
+            {
+                long long * dest = static_cast<long long *>(data_);
+                *dest = string_to_integer<long long>(buf);
+            }
             break;
         case x_unsigned_long_long:
-            exchange_type_cast<x_unsigned_long_long>(data_) = string_to_unsigned_integer<unsigned long long>(buf);
+            {
+                unsigned long long * dest = static_cast<unsigned long long *>(data_);
+                *dest = string_to_unsigned_integer<unsigned long long>(buf);
+            }
             break;
         case x_double:
-            exchange_type_cast<x_double>(data_) = cstring_to_double(buf);
+            {
+                double * dest = static_cast<double *>(data_);
+                *dest = string_to_double(buf);
+            }
             break;
         case x_stdtm:
-            // attempt to parse the string and convert to std::tm
-            parse_std_tm(buf, exchange_type_cast<x_stdtm>(data_));
+            {
+                // attempt to parse the string and convert to std::tm
+                std::tm * dest = static_cast<std::tm *>(data_);
+                parse_std_tm(buf, *dest);
+            }
             break;
         case x_rowid:
             {

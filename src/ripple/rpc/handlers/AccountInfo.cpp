@@ -19,22 +19,11 @@
 
 #include <BeastConfig.h>
 
-#include <ripple/app/main/Application.h>
-#include <ripple/json/json_value.h>
-#include <ripple/ledger/ReadView.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/Indexes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/protocol/types.h>
-#include <ripple/rpc/impl/Utilities.h>
-#include <ripple/rpc/Context.h>
-#include <ripple/rpc/impl/AccountFromString.h>
-#include <ripple/rpc/impl/LookupLedger.h>
-
 namespace ripple {
 
 // {
 //   account: <indent>,
+//   account_index : <index> // optional
 //   strict: <bool>
 //           if true, only allow public keys and addresses. false, default.
 //   ledger_hash : <ledger>
@@ -46,8 +35,8 @@ Json::Value doAccountInfo (RPC::Context& context)
 {
     auto& params = context.params;
 
-    std::shared_ptr<ReadView const> ledger;
-    auto result = RPC::lookupLedger (ledger, context);
+    Ledger::pointer ledger;
+    Json::Value result = RPC::lookupLedger (params, ledger, context.netOps);
 
     if (!ledger)
         return result;
@@ -57,25 +46,30 @@ Json::Value doAccountInfo (RPC::Context& context)
 
     std::string strIdent = params.isMember (jss::account)
             ? params[jss::account].asString () : params[jss::ident].asString ();
+    bool bIndex;
+    int iIndex = params.isMember (jss::account_index)
+            ? params[jss::account_index].asUInt () : 0;
     bool bStrict = params.isMember (jss::strict) && params[jss::strict].asBool ();
-    AccountID accountID;
+    RippleAddress naAccount;
 
     // Get info on account.
 
-    auto jvAccepted = RPC::accountFromString (accountID, strIdent, bStrict);
+    Json::Value jvAccepted = RPC::accountFromString (
+        ledger, naAccount, bIndex, strIdent, iIndex, bStrict, context.netOps);
 
-    if (jvAccepted)
+    if (!jvAccepted.empty ())
         return jvAccepted;
 
-    auto const sleAccepted = ledger->read(keylet::account(accountID));
-    if (sleAccepted)
+    auto asAccepted = context.netOps.getAccountState (ledger, naAccount);
+
+    if (asAccepted)
     {
-        RPC::injectSLE(jvAccepted, *sleAccepted);
-        result[jss::account_data] = jvAccepted;
+        asAccepted->addJson (jvAccepted);
+        result[jss::account_data]    = jvAccepted;
     }
     else
     {
-        result[jss::account] = context.app.accountIDCache().toBase58 (accountID);
+        result[jss::account] = naAccount.humanAccountID ();
         RPC::inject_error (rpcACT_NOT_FOUND, result);
     }
 

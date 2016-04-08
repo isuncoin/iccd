@@ -26,13 +26,13 @@ namespace ripple {
 
 void BookListeners::addSubscriber (InfoSub::ref sub)
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     mListeners[sub->getSeq ()] = sub;
 }
 
 void BookListeners::removeSubscriber (std::uint64_t seq)
 {
-    std::lock_guard <std::recursive_mutex> sl (mLock);
+    ScopedLockType sl (mLock);
     mListeners.erase (seq);
 }
 
@@ -40,10 +40,10 @@ void BookListeners::publish (Json::Value const& jvObj)
 {
     std::string sObj = to_string (jvObj);
 
-    std::lock_guard <std::recursive_mutex> sl (mLock);
-    auto it = mListeners.cbegin ();
+    ScopedLockType sl (mLock);
+    NetworkOPs::SubMapType::const_iterator it = mListeners.begin ();
 
-    while (it != mListeners.cend ())
+    while (it != mListeners.end ())
     {
         InfoSub::pointer p = it->second.lock ();
 

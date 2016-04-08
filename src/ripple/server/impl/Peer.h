@@ -40,7 +40,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 
 namespace ripple {
 namespace HTTP {

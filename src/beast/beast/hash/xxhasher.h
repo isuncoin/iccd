@@ -26,9 +26,9 @@
 
 #if ! BEAST_NO_XXHASH
 
-#include <beast/hash/endian.h>
 #include <beast/hash/impl/xxhash.h>
-#include <type_traits>
+#include <beast/utility/noexcept.h>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 #include <cstddef>
 
 namespace beast {
@@ -43,8 +43,6 @@ private:
 
 public:
     using result_type = std::size_t;
-
-    static beast::endian const endian = beast::endian::native;
 
     xxhasher() noexcept
     {
@@ -69,7 +67,7 @@ public:
     }
 
     void
-    operator()(void const* key, std::size_t len) noexcept
+    append (void const* key, std::size_t len) noexcept
     {
         detail::XXH64_update (&state_, key, len);
     }

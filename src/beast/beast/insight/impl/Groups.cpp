@@ -19,7 +19,7 @@
 
 #include <unordered_map>
 #include <beast/hash/uhash.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace beast {
 namespace insight {
@@ -31,7 +31,7 @@ class GroupImp
     , public Group
 {
 public:
-    using Items = std::vector <std::shared_ptr <BaseImpl>>;
+    typedef std::vector <std::shared_ptr <BaseImpl>> Items;
 
     std::string const m_name;
     Collector::ptr m_collector;
@@ -91,7 +91,7 @@ private:
 class GroupsImp : public Groups
 {
 public:
-    using Items = std::unordered_map <std::string, std::shared_ptr <Group>, uhash <>>;
+    typedef std::unordered_map <std::string, std::shared_ptr <Group>, uhash <>> Items;
 
     Collector::ptr m_collector;
     Items m_items;

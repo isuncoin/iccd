@@ -49,9 +49,9 @@ namespace beast {
 
 #if BEAST_NATIVE_WCHAR_IS_UTF32 || DOXYGEN
  /** A platform-independent 32-bit unicode character type. */
- using beast_wchar = wchar_t;
+ typedef wchar_t        beast_wchar;
 #else
- using beast_wchar = std::uint32_t;
+ typedef std::uint32_t         beast_wchar;
 #endif
 
 #ifndef DOXYGEN

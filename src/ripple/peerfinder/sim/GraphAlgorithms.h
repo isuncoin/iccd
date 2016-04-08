@@ -35,13 +35,13 @@ struct VertexTraits;
 template <typename Vertex, typename Function>
 void breadth_first_traverse (Vertex& start, Function f)
 {
-    using Traits = VertexTraits <Vertex>;
-    using Edges  = typename Traits::Edges;
-    using Edge   = typename Traits::Edge;
+    typedef VertexTraits <Vertex>  Traits;
+    typedef typename Traits::Edges Edges;
+    typedef typename Traits::Edge  Edge;
 
-    using Probe = std::pair <Vertex*, int>;
-    using Work = std::deque <Probe>;
-    using Visited = std::set <Vertex*>;
+    typedef std::pair <Vertex*, int> Probe;
+    typedef std::deque <Probe> Work;
+    typedef std::set <Vertex*> Visited;
     Work work;
     Visited visited;
     work.emplace_back (&start, 0);

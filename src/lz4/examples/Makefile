@@ -1,7 +1,6 @@
 # ##########################################################################
 # LZ4 examples - Makefile
 # Copyright (C) Yann Collet 2011-2014
-#
 # GPL v2 License
 #
 # This program is free software; you can redistribute it and/or modify
@@ -22,17 +21,29 @@
 #  - LZ4 source repository : http://code.google.com/p/lz4/
 #  - LZ4 forum froup : https://groups.google.com/forum/#!forum/lz4c
 # ##########################################################################
-# This makefile compile and test
-# example programs, using (mostly) LZ4 streaming library,
-# kindly provided by Takayuki Matsuoka
+# lz4 : Command Line Utility, supporting gzip-like arguments
+# lz4c  : CLU, supporting also legacy lz4demo arguments
+# lz4c32: Same as lz4c, but forced to compile in 32-bits mode
+# fuzzer  : Test tool, to check lz4 integrity on target platform
+# fuzzer32: Same as fuzzer, but forced to compile in 32-bits mode
+# fullbench  : Precisely measure speed for each LZ4 function variant
+# fullbench32: Same as fullbench, but forced to compile in 32-bits mode
 # ##########################################################################
 
+CC     := $(CC)
 CFLAGS ?= -O3
-CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wstrict-prototypes
-FLAGS  := -I../lib $(CPPFLAGS) $(CFLAGS) $(LDFLAGS)
+CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wstrict-prototypes -Wno-missing-braces   # Wno-missing-braces required due to GCC <4.8.3 bug
+FLAGS   = -I../lib $(CPPFLAGS) $(CFLAGS) $(LDFLAGS)
 
 TESTFILE= Makefile
-LZ4DIR := ../lib
+LZ4DIR  = ../lib
+
+
+# Minimize test target for Travis CI's Build Matrix
+ifeq ($(LZ4_TRAVIS_CI_ENV),-m32)
+CFLAGS += -m32
+else ifeq ($(LZ4_TRAVIS_CI_ENV),-m64)
+endif
 
 
 # Define *.exe as extension for Windows systems

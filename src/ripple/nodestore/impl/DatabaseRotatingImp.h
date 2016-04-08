@@ -52,13 +52,11 @@ public:
                  int readThreads,
                  std::shared_ptr <Backend> writableBackend,
                  std::shared_ptr <Backend> archiveBackend,
+                 std::unique_ptr <Backend> fastBackend,
                  beast::Journal journal)
-            : DatabaseImp (
-                name,
-                scheduler,
-                readThreads,
-                std::unique_ptr <Backend>(),
-                journal)
+            : DatabaseImp (name, scheduler, readThreads,
+                    std::unique_ptr <Backend>(), std::move (fastBackend),
+                    journal)
             , writableBackend_ (writableBackend)
             , archiveBackend_ (archiveBackend)
     {}
@@ -99,7 +97,7 @@ public:
         return getWritableBackend()->getWriteLoad();
     }
 
-    void for_each (std::function <void(std::shared_ptr<NodeObject>)> f) override
+    void for_each (std::function <void(NodeObject::Ptr)> f) override
     {
         Backends b = getBackends();
         b.archiveBackend->for_each (f);
@@ -119,12 +117,12 @@ public:
                 *getWritableBackend());
     }
 
-    std::shared_ptr<NodeObject> fetchNode (uint256 const& hash) override
+    NodeObject::Ptr fetchNode (uint256 const& hash) override
     {
         return fetchFrom (hash);
     }
 
-    std::shared_ptr<NodeObject> fetchFrom (uint256 const& hash) override;
+    NodeObject::Ptr fetchFrom (uint256 const& hash) override;
     TaggedCache <uint256, NodeObject>& getPositiveCache() override
     {
         return m_cache;

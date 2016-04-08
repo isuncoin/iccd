@@ -22,7 +22,7 @@
 
 #include <ripple/websocket/MakeServer.h>
 #include <beast/asio/IPAddressConversion.h>
-#include <memory>
+#include <beast/cxx14/memory.h> // <memory>
 
 namespace ripple {
 namespace websocket {

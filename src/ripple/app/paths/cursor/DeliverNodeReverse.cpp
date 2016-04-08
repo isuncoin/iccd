@@ -24,15 +24,6 @@
 namespace ripple {
 namespace path {
 
-static
-bool enableDirRestartFix (
-    std::uint32_t parentCloseTime)
-{
-    // Mon Aug 17 11:00:00am PDT
-    static std::uint32_t const enableAfter = 493149600;
-    return parentCloseTime > enableAfter;
-}
-
 // At the right most node of a list of consecutive offer nodes, given the amount
 // requested to be delivered, push towards the left nodes the amount requested
 // for the right nodes so we can compute how much to deliver from the source.
@@ -44,27 +35,23 @@ bool enableDirRestartFix (
 // as the rate does not increase past the initial rate.
 
 // To deliver from an order book, when computing
-TER PathCursor::deliverNodeReverseImpl (
-    AccountID const& uOutAccountID, // --> Output owner's account.
-    STAmount const& saOutReq,       // --> Funds requested to be
-                                    // delivered for an increment.
-    STAmount& saOutAct              // <-- Funds actually delivered for an
-                                    // increment
-                                        ) const
+TER PathCursor::deliverNodeReverse (
+    Account const& uOutAccountID,  // --> Output owner's account.
+    STAmount const& saOutReq,      // --> Funds requested to be
+                                   // delivered for an increment.
+    STAmount& saOutAct) const      // <-- Funds actually delivered for an
+                                   // increment.
 {
     TER resultCode   = tesSUCCESS;
 
-    if (!enableDirRestartFix (rippleCalc_.view.info ().parentCloseTime))
-    {
-        node().directory.restart(multiQuality_);
-    }
+    node().directory.restart(multiQuality_);
 
     // Accumulation of what the previous node must deliver.
     // Possible optimization: Note this gets zeroed on each increment, ideally
     // only on first increment, then it could be a limit on the forward pass.
     saOutAct.clear (saOutReq);
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "deliverNodeReverse>"
         << " saOutAct=" << saOutAct
         << " saOutReq=" << saOutReq
@@ -73,17 +60,13 @@ TER PathCursor::deliverNodeReverseImpl (
     assert (saOutReq != zero);
 
     int loopCount = 0;
-    auto viewJ = rippleCalc_.logs_.journal ("View");
 
     // While we did not deliver as much as requested:
     while (saOutAct < saOutReq)
     {
-        if (++loopCount >
-            (multiQuality_ ?
-                CALC_NODE_DELIVER_MAX_LOOPS_MQ :
-                CALC_NODE_DELIVER_MAX_LOOPS))
+        if (++loopCount > CALC_NODE_DELIVER_MAX_LOOPS)
         {
-            JLOG (j_.fatal) << "loop count exceeded";
+            WriteLog (lsFATAL, RippleCalc) << "loop count exceeded";
             return telFAILED_PROCESSING;
         }
 
@@ -99,10 +82,10 @@ TER PathCursor::deliverNodeReverseImpl (
         // Issuer sending or receiving.
 
         const STAmount saOutFeeRate = hasFee
-            ? STAmount::saOne         // No fee.
+            ? saOne             // No fee.
             : node().transferRate_;   // Transfer rate of issuer.
 
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "deliverNodeReverse:"
             << " offerOwnerAccount_="
             << node().offerOwnerAccount_
@@ -122,7 +105,7 @@ TER PathCursor::deliverNodeReverseImpl (
             // Set initial rate.
             node().saRateMax = saOutFeeRate;
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: Set initial rate:"
                 << " node().saRateMax=" << node().saRateMax
                 << " saOutFeeRate=" << saOutFeeRate;
@@ -130,7 +113,7 @@ TER PathCursor::deliverNodeReverseImpl (
         else if (saOutFeeRate > node().saRateMax)
         {
             // Offer exceeds initial rate.
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: Offer exceeds initial rate:"
                 << " node().saRateMax=" << node().saRateMax
                 << " saOutFeeRate=" << saOutFeeRate;
@@ -151,7 +134,7 @@ TER PathCursor::deliverNodeReverseImpl (
 
             node().saRateMax   = saOutFeeRate;
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: Reducing rate:"
                 << " node().saRateMax=" << node().saRateMax;
         }
@@ -174,7 +157,7 @@ TER PathCursor::deliverNodeReverseImpl (
             saOutPassAct, saOutFeeRate, saOutPassAct.issue (), false);
         // Offer out with fees.
 
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "deliverNodeReverse:"
             << " saOutReq=" << saOutReq
             << " saOutAct=" << saOutAct
@@ -195,7 +178,7 @@ TER PathCursor::deliverNodeReverseImpl (
                 saOutPlusFees.issue (), true);
             saOutPassAct = std::min (saOutPassReq, fee);
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: Total exceeds fees:"
                 << " saOutPassAct=" << saOutPassAct
                 << " saOutPlusFees=" << saOutPlusFees
@@ -208,7 +191,7 @@ TER PathCursor::deliverNodeReverseImpl (
         STAmount saInPassReq = std::min (node().saTakerPays, outputFee);
         STAmount saInPassAct;
 
-        JLOG (j_.trace)
+        WriteLog (lsTRACE, RippleCalc)
             << "deliverNodeReverse:"
             << " outputFee=" << outputFee
             << " saInPassReq=" << saInPassReq
@@ -219,14 +202,14 @@ TER PathCursor::deliverNodeReverseImpl (
         if (!saInPassReq) // FIXME: This is bogus
         {
             // After rounding did not want anything.
-            JLOG (j_.debug)
+            WriteLog (lsDEBUG, RippleCalc)
                 << "deliverNodeReverse: micro offer is unfunded.";
 
             node().bEntryAdvance   = true;
             continue;
         }
         // Find out input amount actually available at current rate.
-        else if (!isXRP(previousNode().account_))
+        else if (!isICC(previousNode().account_))
         {
             // account --> OFFER --> ?
             // Due to node expansion, previous is guaranteed to be the issuer.
@@ -242,7 +225,7 @@ TER PathCursor::deliverNodeReverseImpl (
 
             saInPassAct = saInPassReq;
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: account --> OFFER --> ? :"
                 << " saInPassAct=" << saInPassAct;
         }
@@ -252,12 +235,12 @@ TER PathCursor::deliverNodeReverseImpl (
             // Compute in previous offer node how much could come in.
 
             // TODO(tom): Fix nasty recursion here!
-            resultCode = increment(-1).deliverNodeReverseImpl(
+            resultCode = increment(-1).deliverNodeReverse(
                 node().offerOwnerAccount_,
                 saInPassReq,
                 saInPassAct);
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: offer --> OFFER --> ? :"
                 << " saInPassAct=" << saInPassAct;
         }
@@ -275,7 +258,7 @@ TER PathCursor::deliverNodeReverseImpl (
                 saOutPassAct, saOutFeeRate, saOutPassAct.issue (), true);
             saOutPlusFees   = std::min (node().saOfferFunds, outputFees);
 
-            JLOG (j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "deliverNodeReverse: adjusted:"
                 << " saOutPassAct=" << saOutPassAct
                 << " saOutPlusFees=" << saOutPlusFees;
@@ -296,8 +279,8 @@ TER PathCursor::deliverNodeReverseImpl (
         // visited.  However, these deductions and adjustments are tenative.
         //
         // Must reset balances when going forward to perform actual transfers.
-        resultCode   = accountSend(view(),
-            node().offerOwnerAccount_, node().issue_.account, saOutPassAct, viewJ);
+        resultCode   = ledger().accountSend (
+            node().offerOwnerAccount_, node().issue_.account, saOutPassAct);
 
         if (resultCode != tesSUCCESS)
             break;
@@ -308,7 +291,7 @@ TER PathCursor::deliverNodeReverseImpl (
 
         if (saTakerPaysNew < zero || saTakerGetsNew < zero)
         {
-            JLOG (j_.warning)
+            WriteLog (lsWARNING, RippleCalc)
                 << "deliverNodeReverse: NEGATIVE:"
                 << " node().saTakerPaysNew=" << saTakerPaysNew
                 << " node().saTakerGetsNew=" << saTakerGetsNew;
@@ -320,12 +303,12 @@ TER PathCursor::deliverNodeReverseImpl (
         node().sleOffer->setFieldAmount (sfTakerGets, saTakerGetsNew);
         node().sleOffer->setFieldAmount (sfTakerPays, saTakerPaysNew);
 
-        view().update (node().sleOffer);
+        ledger().entryModify (node().sleOffer);
 
         if (saOutPassAct == node().saTakerGets)
         {
             // Offer became unfunded.
-            JLOG (j_.debug)
+            WriteLog (lsDEBUG, RippleCalc)
                 << "deliverNodeReverse: offer became unfunded.";
 
             node().bEntryAdvance   = true;
@@ -346,37 +329,20 @@ TER PathCursor::deliverNodeReverseImpl (
         << " saOutAct=" << saOutAct
         << " saOutReq=" << saOutReq;
 
-    assert(saOutAct <= saOutReq);
+    assert (saOutAct <= saOutReq);
 
     if (resultCode == tesSUCCESS && !saOutAct)
         resultCode = tecPATH_DRY;
     // Unable to meet request, consider path dry.
     // Design invariant: if nothing was actually delivered, return tecPATH_DRY.
 
-    JLOG (j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "deliverNodeReverse<"
         << " saOutAct=" << saOutAct
         << " saOutReq=" << saOutReq
         << " saPrvDlvReq=" << previousNode().saRevDeliver;
 
     return resultCode;
-}
-
-TER PathCursor::deliverNodeReverse (
-    AccountID const& uOutAccountID, // --> Output owner's account.
-    STAmount const& saOutReq,       // --> Funds requested to be
-                                    // delivered for an increment.
-    STAmount& saOutAct              // <-- Funds actually delivered for an
-                                    // increment
-                                    ) const
-{
-    if (enableDirRestartFix (rippleCalc_.view.info ().parentCloseTime))
-    {
-        for (int i = nodeIndex_; i >= 0 && !node (i).isAccount(); --i)
-            node (i).directory.restart (multiQuality_);
-    }
-
-    return deliverNodeReverseImpl(uOutAccountID, saOutReq, saOutAct);
 }
 
 }  // path

@@ -23,13 +23,10 @@
 #include <ripple/app/ledger/Ledger.h>
 
 namespace ripple {
-
-class NetworkOPs;
-
 namespace RPC {
 
 Json::Value accounts (
-    std::shared_ptr <ReadView const> const& lrLedger,
+    Ledger::ref lrLedger,
     RippleAddress const& naMasterGenerator,
     NetworkOPs& netOps);
 

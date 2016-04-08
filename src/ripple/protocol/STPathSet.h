@@ -24,8 +24,6 @@
 #include <ripple/protocol/SField.h>
 #include <ripple/protocol/STBase.h>
 #include <ripple/protocol/UintTypes.h>
-#include <boost/optional.hpp>
-#include <cassert>
 #include <cstddef>
 
 namespace ripple {
@@ -50,63 +48,29 @@ private:
     get_hash (STPathElement const& element);
 
 public:
-    STPathElement(
-        boost::optional<AccountID> const& account,
-        boost::optional<Currency> const& currency,
-        boost::optional<AccountID> const& issuer)
-        : mType (typeNone)
-    {
-        if (! account)
-        {
-            is_offer_ = true;
-        }
-        else
-        {
-            is_offer_ = false;
-            mAccountID = *account;
-            mType |= typeAccount;
-            assert(mAccountID != noAccount());
-        }
-
-        if (currency)
-        {
-            mCurrencyID = *currency;
-            mType |= typeCurrency;
-        }
-
-        if (issuer)
-        {
-            mIssuerID = *issuer;
-            mType |= typeIssuer;
-            assert(mIssuerID != noAccount());
-        }
-
-        hash_value_ = get_hash (*this);
-    }
-
     STPathElement (
-        AccountID const& account, Currency const& currency,
-        AccountID const& issuer, bool forceCurrency = false)
+        Account const& account, Currency const& currency,
+        Account const& issuer, bool forceCurrency = false)
         : mType (typeNone), mAccountID (account), mCurrencyID (currency)
-        , mIssuerID (issuer), is_offer_ (isXRP(mAccountID))
+        , mIssuerID (issuer), is_offer_ (isICC(mAccountID))
     {
         if (!is_offer_)
             mType |= typeAccount;
 
-        if (forceCurrency || !isXRP(currency))
+        if (forceCurrency || !isICC(currency))
             mType |= typeCurrency;
 
-        if (!isXRP(issuer))
+        if (!isICC(issuer))
             mType |= typeIssuer;
 
         hash_value_ = get_hash (*this);
     }
 
     STPathElement (
-        unsigned int uType, AccountID const& account, Currency const& currency,
-        AccountID const& issuer)
+        unsigned int uType, Account const& account, Currency const& currency,
+        Account const& issuer)
         : mType (uType), mAccountID (account), mCurrencyID (currency)
-        , mIssuerID (issuer), is_offer_ (isXRP(mAccountID))
+        , mIssuerID (issuer), is_offer_ (isICC(mAccountID))
     {
         hash_value_ = get_hash (*this);
     }
@@ -137,7 +101,7 @@ public:
 
     // Nodes are either an account ID or a offer prefix. Offer prefixs denote a
     // class of offers.
-    AccountID const&
+    Account const&
     getAccountID () const
     {
         return mAccountID;
@@ -149,7 +113,7 @@ public:
         return mCurrencyID;
     }
 
-    AccountID const&
+    Account const&
     getIssuerID () const
     {
         return mIssuerID;
@@ -167,9 +131,9 @@ public:
 
 private:
     unsigned int mType;
-    AccountID mAccountID;
+    Account mAccountID;
     Currency mCurrencyID;
-    AccountID mIssuerID;
+    Account mIssuerID;
 
     bool is_offer_;
     std::size_t hash_value_;
@@ -210,8 +174,8 @@ public:
 
     bool
     hasSeen (
-        AccountID const& account, Currency const& currency,
-        AccountID const& issuer) const;
+        Account const& account, Currency const& currency,
+        Account const& issuer) const;
 
     Json::Value
     getJson (int) const;
@@ -304,7 +268,7 @@ public:
 
     bool
     isEquivalent (const STBase& t) const override;
-
+    
     bool
     isDefault () const override
     {
@@ -314,12 +278,6 @@ public:
     // std::vector like interface:
     std::vector<STPath>::const_reference
     operator[] (std::vector<STPath>::size_type n) const
-    {
-        return value[n];
-    }
-
-    std::vector<STPath>::reference
-    operator[] (std::vector<STPath>::size_type n)
     {
         return value[n];
     }
@@ -352,12 +310,6 @@ public:
     push_back (STPath const& e)
     {
         value.push_back (e);
-    }
-
-    template <typename... Args>
-    void emplace_back (Args&&... args)
-    {
-        value.emplace_back (std::forward<Args> (args)...);
     }
 
 private:

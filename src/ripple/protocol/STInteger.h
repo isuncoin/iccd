@@ -32,7 +32,7 @@ public:
     using value_type = Integer;
 
     explicit
-    STInteger (Integer v)
+    STInteger (Integer v) 
         : value_ (v)
     { }
 
@@ -73,17 +73,6 @@ public:
 
     Integer
     getValue () const
-    {
-        return value_;
-    }
-
-    STInteger& operator= (value_type const& v)
-    {
-        value_ = v;
-        return *this;
-    }
-
-    value_type value() const noexcept
     {
         return value_;
     }

@@ -18,18 +18,8 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/main/Application.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/basics/Log.h>
-#include <ripple/ledger/ReadView.h>
-#include <ripple/net/RPCErr.h>
 #include <ripple/net/RPCSub.h>
-#include <ripple/protocol/ErrorCodes.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/resource/Fees.h>
 #include <ripple/rpc/impl/ParseAccountIds.h>
-#include <ripple/rpc/Context.h>
 #include <ripple/server/Role.h>
 
 namespace ripple {
@@ -42,7 +32,7 @@ Json::Value doSubscribe (RPC::Context& context)
     if (!context.infoSub && !context.params.isMember (jss::url))
     {
         // Must be a JSON-RPC call.
-        JLOG (context.j.info)
+        WriteLog (lsINFO, RPCHandler)
             << "doSubscribe: RPC subscribe requires a url";
 
         return rpcError (rpcINVALID_PARAMS);
@@ -71,31 +61,25 @@ Json::Value doSubscribe (RPC::Context& context)
 
         if (!ispSub)
         {
-            JLOG (context.j.debug)
+            WriteLog (lsDEBUG, RPCHandler)
                 << "doSubscribe: building: " << strUrl;
 
-            auto rspSub = make_RPCSub (context.app.getOPs (),
-                context.app.getIOService (), context.app.getJobQueue (),
-                    strUrl, strUsername, strPassword, context.app.logs ());
+            RPCSub::pointer rspSub = RPCSub::New (getApp ().getOPs (),
+                getApp ().getIOService (), getApp ().getJobQueue (),
+                    strUrl, strUsername, strPassword);
             ispSub  = context.netOps.addRpcSub (
                 strUrl, std::dynamic_pointer_cast<InfoSub> (rspSub));
         }
         else
         {
-            JLOG (context.j.trace)
+            WriteLog (lsTRACE, RPCHandler)
                 << "doSubscribe: reusing: " << strUrl;
 
-            if (auto rpcSub = std::dynamic_pointer_cast<RPCSub> (ispSub))
-            {
-                // Why do we need to check isMember against jss::username and
-                // jss::password here instead of just setting the username and
-                // the password? What about url_username and url_password?
-                if (context.params.isMember (jss::username))
-                    rpcSub->setUsername (strUsername);
+            if (context.params.isMember (jss::username))
+                dynamic_cast<RPCSub*> (&*ispSub)->setUsername (strUsername);
 
-                if (context.params.isMember (jss::password))
-                    rpcSub->setPassword (strPassword);
-            }
+            if (context.params.isMember (jss::password))
+                dynamic_cast<RPCSub*> (&*ispSub)->setPassword (strPassword);
         }
     }
     else
@@ -108,7 +92,7 @@ Json::Value doSubscribe (RPC::Context& context)
     }
     else if (!context.params[jss::streams].isArray ())
     {
-        JLOG (context.j.info)
+        WriteLog (lsINFO, RPCHandler)
             << "doSubscribe: streams requires an array.";
 
         return rpcError (rpcINVALID_PARAMS);
@@ -138,17 +122,6 @@ Json::Value doSubscribe (RPC::Context& context)
                          || streamName == "rt_transactions") // DEPRECATED
                 {
                     context.netOps.subRTTransactions (ispSub);
-                }
-                else if (streamName == "validations")
-                {
-                    context.netOps.subValidations (ispSub);
-                }
-                else if (streamName == "peer_status")
-                {
-                    if (context.role != Role::ADMIN)
-                        jvResult[jss::error] = "noPermission";
-                    else
-                        context.netOps.subPeerStatus (ispSub);
                 }
                 else
                 {
@@ -201,7 +174,7 @@ Json::Value doSubscribe (RPC::Context& context)
         else
         {
             context.netOps.subAccount (ispSub, ids, false);
-            JLOG (context.j.debug)
+            WriteLog (lsDEBUG, RPCHandler)
                 << "doSubscribe: accounts: " << ids.size ();
         }
     }
@@ -242,7 +215,7 @@ Json::Value doSubscribe (RPC::Context& context)
                     || !to_currency (book.in.currency,
                                      taker_pays[jss::currency].asString ()))
             {
-                JLOG (context.j.info) << "Bad taker_pays currency.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_pays currency.";
 
                 return rpcError (rpcSRC_CUR_MALFORMED);
             }
@@ -255,7 +228,7 @@ Json::Value doSubscribe (RPC::Context& context)
                      || (!book.in.currency != !book.in.account)
                      || noAccount() == book.in.account)
             {
-                JLOG (context.j.info) << "Bad taker_pays issuer.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_pays issuer.";
 
                 return rpcError (rpcSRC_ISR_MALFORMED);
             }
@@ -265,7 +238,7 @@ Json::Value doSubscribe (RPC::Context& context)
                     || !to_currency (book.out.currency,
                                      taker_gets[jss::currency].asString ()))
             {
-                JLOG (context.j.info) << "Bad taker_pays currency.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_pays currency.";
 
                 return rpcError (rpcSRC_CUR_MALFORMED);
             }
@@ -278,7 +251,7 @@ Json::Value doSubscribe (RPC::Context& context)
                      || (!book.out.currency != !book.out.account)
                      || noAccount() == book.out.account)
             {
-                JLOG (context.j.info) << "Bad taker_gets issuer.";
+                WriteLog (lsINFO, RPCHandler) << "Bad taker_gets issuer.";
 
                 return rpcError (rpcDST_ISR_MALFORMED);
             }
@@ -286,24 +259,21 @@ Json::Value doSubscribe (RPC::Context& context)
             if (book.in.currency == book.out.currency
                     && book.in.account == book.out.account)
             {
-                JLOG (context.j.info)
+                WriteLog (lsINFO, RPCHandler)
                     << "taker_gets same as taker_pays.";
                 return rpcError (rpcBAD_MARKET);
             }
 
-            boost::optional<AccountID> takerID;
+            RippleAddress   raTakerID;
 
-            if (j.isMember (jss::taker))
-            {
-                takerID = parseBase58<AccountID>(
-                    j[jss::taker].asString());
-                if (! takerID)
-                    return rpcError (rpcBAD_ISSUER);
-            }
+            if (!j.isMember (jss::taker))
+                raTakerID.setAccountID (noAccount());
+            else if (!raTakerID.setAccountID (j[jss::taker].asString ()))
+                return rpcError (rpcBAD_ISSUER);
 
             if (!isConsistent (book))
             {
-                JLOG (context.j.warning) << "Bad market: " << book;
+                WriteLog (lsWARNING, RPCHandler) << "Bad market: " << book;
                 return rpcError (rpcBAD_MARKET);
             }
 
@@ -315,8 +285,8 @@ Json::Value doSubscribe (RPC::Context& context)
             if (bSnapshot)
             {
                 context.loadType = Resource::feeMediumBurdenRPC;
-                std::shared_ptr<ReadView const> lpLedger
-                        = context.app.getLedgerMaster().getPublishedLedger();
+                auto lpLedger = getApp().getLedgerMaster ().
+                        getPublishedLedger ();
                 if (lpLedger)
                 {
                     const Json::Value jvMarker = Json::Value (Json::nullValue);
@@ -326,7 +296,7 @@ Json::Value doSubscribe (RPC::Context& context)
                     {
                         context.netOps.getBookPage (context.role == Role::ADMIN,
                             lpLedger, field == jss::asks ? reversed (book) : book,
-                            takerID ? *takerID : noAccount(), false, 0, jvMarker,
+                            raTakerID.getAccountID(), false, 0, jvMarker,
                             jvOffers);
 
                         if (jvResult.isMember (field))

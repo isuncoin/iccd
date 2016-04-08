@@ -28,10 +28,12 @@
 #include <ripple/json/json_reader.h>
 #include <ripple/websocket/Connection.h>
 #include <ripple/websocket/WebSocket.h>
-#include <boost/unordered_map.hpp>
+
 #include <memory>
 
 namespace ripple {
+
+extern bool serverOkay (std::string& reason);
 
 namespace websocket {
 
@@ -54,7 +56,6 @@ beast::IP::Endpoint makeBeastEndpoint (beast::IP::Endpoint const& e)
     return e;
 }
 
-
 template <class WebSocket>
 class HandlerImpl
     : public WebSocket::Handler
@@ -62,7 +63,7 @@ class HandlerImpl
 public:
     using connection_ptr = typename WebSocket::ConnectionPtr;
     using message_ptr = typename WebSocket::MessagePtr;
-    using wsc_ptr = std::shared_ptr <ConnectionImpl <WebSocket> >;
+    using wsc_ptr = std::shared_ptr <ConnectionImpl <WebSocket> > ;
 
     // Private reasons to close.
     enum
@@ -71,27 +72,22 @@ public:
     };
 
 private:
-    Application& app_;
     beast::insight::Counter rpc_requests_;
     beast::insight::Event rpc_io_;
     beast::insight::Event rpc_size_;
     beast::insight::Event rpc_time_;
     ServerDescription desc_;
-    beast::Journal j_;
 
 protected:
     // VFALCO TODO Make this private.
     std::mutex mLock;
 
     // For each connection maintain an associated object to track subscriptions.
-    using MapType = boost::unordered_map<connection_ptr, wsc_ptr>;
+    typedef hash_map <connection_ptr, wsc_ptr> MapType;
     MapType mMap;
 
 public:
-    HandlerImpl (ServerDescription const& desc)
-        : app_ (desc.app)
-        , desc_ (desc)
-        , j_ (app_.journal ("HandlerLog"))
+    HandlerImpl (ServerDescription const& desc) : desc_ (desc)
     {
         auto const& group (desc_.collectorManager.group ("rpc"));
         rpc_requests_ = group->make_counter ("requests");
@@ -108,6 +104,11 @@ public:
     {
         return desc_.port;
     }
+
+    bool getPublic()
+    {
+        return ! port ().admin_ip.empty ();
+    };
 
     void send (connection_ptr const& cpClient, message_ptr const& mpMessage)
     {
@@ -127,8 +128,7 @@ public:
     {
         try
         {
-            auto& jm = broadcast ? j_.trace : j_.debug;
-            JLOG (jm)
+            WriteLog (broadcast ? lsTRACE : lsDEBUG, HandlerLog)
                     << "Ws:: Sending '" << strMessage << "'";
 
             cpClient->send (strMessage);
@@ -164,7 +164,7 @@ public:
             cpClient->terminate ({});
             try
             {
-                JLOG (j_.debug) <<
+                WriteLog (lsDEBUG, HandlerLog) <<
                     "Ws:: ping_out(" <<
                     // TODO(tom): re-enable this logging.
                     // cpClient->get_socket ().remote_endpoint ().to_string ()
@@ -202,7 +202,6 @@ public:
         {
             auto remoteEndpoint = cpClient->get_socket ().remote_endpoint ();
             auto connection = std::make_shared <ConnectionImpl <WebSocket> > (
-                desc_.app,
                 desc_.resourceManager,
                 desc_.source,
                 *this,
@@ -214,7 +213,7 @@ public:
 
             assert (result.second);
             (void) result.second;
-            JLOG (j_.debug) <<
+            WriteLog (lsDEBUG, HandlerLog) <<
                 "Ws:: on_open(" << remoteEndpoint << ")";
         }
         catch (...)
@@ -236,7 +235,7 @@ public:
         }
         try
         {
-            JLOG (j_.debug) <<
+            WriteLog (lsDEBUG, HandlerLog) <<
            "Ws:: on_pong(" << cpClient->get_socket ().remote_endpoint() << ")";
         }
         catch (...)
@@ -268,7 +267,7 @@ public:
             {
                 try
                 {
-                    JLOG (j_.debug) <<
+                    WriteLog (lsDEBUG, HandlerLog) <<
                         "Ws:: " << reason << "(" <<
                            cpClient->get_socket ().remote_endpoint() <<
                            ") not found";
@@ -287,7 +286,7 @@ public:
         ptr->preDestroy (); // Must be done before we return
         try
         {
-            JLOG (j_.debug) <<
+            WriteLog (lsDEBUG, HandlerLog) <<
                 "Ws:: " << reason << "(" <<
                    cpClient->get_socket ().remote_endpoint () << ") found";
         }
@@ -296,17 +295,10 @@ public:
         }
 
         // Must be done without holding the websocket send lock
-        app_.getJobQueue ().addJob (
+        getApp().getJobQueue ().addJob (
             jtCLIENT,
             "WSClient::destroy",
-            [ptr] (Job&) { ConnectionImpl <WebSocket>::destroy(ptr); });
-    }
-
-    void message_job(std::string const& name,
-                     connection_ptr const& cpClient)
-    {
-        auto msgs = [this, cpClient] (Job& j) { do_messages(j, cpClient); };
-        app_.getJobQueue ().addJob (jtCLIENT, "WSClient::" + name, msgs);
+            std::bind (&ConnectionImpl <WebSocket>::destroy, ptr));
     }
 
     void on_message (connection_ptr cpClient, message_ptr mpMessage) override
@@ -329,7 +321,7 @@ public:
         {
             try
             {
-                JLOG (j_.debug) <<
+                WriteLog (lsDEBUG, HandlerLog) <<
                     "Ws:: Rejected(" <<
                     cpClient->get_socket().remote_endpoint() <<
                     ") '" << mpMessage->get_payload () << "'";
@@ -340,7 +332,9 @@ public:
         }
 
         if (bRunQ)
-            message_job("command", cpClient);
+            getApp().getJobQueue ().addJob (jtCLIENT, "WSClient::command",
+                      std::bind (&HandlerImpl <WebSocket>::do_messages,
+                                 this, std::placeholders::_1, cpClient));
     }
 
     void do_messages (Job& job, connection_ptr const& cpClient)
@@ -375,18 +369,21 @@ public:
         }
 
         if (ptr->checkMessage ())
-            message_job("more", cpClient);
+            getApp().getJobQueue ().addJob (
+                jtCLIENT, "WSClient::more",
+                std::bind (&HandlerImpl <WebSocket>::do_messages, this,
+                           std::placeholders::_1, cpClient));
     }
 
     bool do_message (Job& job, const connection_ptr& cpClient,
                      const wsc_ptr& conn, const message_ptr& mpMessage)
     {
-        Json::Value jvRequest;
-        Json::Reader jrReader;
+        Json::Value     jvRequest;
+        Json::Reader    jrReader;
 
         try
         {
-            JLOG (j_.debug)
+            WriteLog (lsDEBUG, HandlerLog)
                     << "Ws:: Receiving("
                     << cpClient->get_socket ().remote_endpoint ()
                     << ") '" << mpMessage->get_payload () << "'";
@@ -406,7 +403,7 @@ public:
             send (cpClient, jvResult, false);
         }
         else if (!jrReader.parse (mpMessage->get_payload (), jvRequest) ||
-                 ! jvRequest || !jvRequest.isObject ())
+                 jvRequest.isNull () || !jvRequest.isObject ())
         {
             Json::Value jvResult (Json::objectValue);
 
@@ -422,57 +419,36 @@ public:
             {
                 Json::Value& jCmd = jvRequest[jss::command];
                 if (jCmd.isString())
-                    job.rename ("WSClient::" + jCmd.asString());
+                    job.rename (std::string ("WSClient::") + jCmd.asString());
             }
 
-            auto const start = std::chrono::high_resolution_clock::now ();
-
-            struct HandlerCoroutineData
-            {
-                Json::Value jvRequest;
-                std::string buffer;
-                wsc_ptr conn;
-            };
-
-            auto data = std::make_shared<HandlerCoroutineData>();
-            data->jvRequest = std::move(jvRequest);
-            data->conn = conn;
-
-            auto j = app_.journal ("RPCHandler");
-            auto coroutine = [data, j] (RPC::Suspend const& suspend) {
-                data->buffer = to_string(
-                    data->conn->invokeCommand(
-                        data->jvRequest, suspend));
-            };
-            static auto const disableWebsocketsCoroutines = true;
-            auto useCoroutines = disableWebsocketsCoroutines ?
-                    RPC::UseCoroutines::no : RPC::useCoroutines(desc_.config);
-            runOnCoroutine(useCoroutines, coroutine);
-
+            auto const start (std::chrono::high_resolution_clock::now ());
+            Json::Value const jvObj (conn->invokeCommand (jvRequest));
+            std::string const buffer (to_string (jvObj));
             rpc_time_.notify (static_cast <beast::insight::Event::value_type> (
                 std::chrono::duration_cast <std::chrono::milliseconds> (
                     std::chrono::high_resolution_clock::now () - start)));
             ++rpc_requests_;
             rpc_size_.notify (static_cast <beast::insight::Event::value_type>
-                (data->buffer.size()));
-            send (cpClient, data->buffer, false);
+                (buffer.size ()));
+            send (cpClient, buffer, false);
         }
 
         return true;
     }
 
     boost::asio::ssl::context&
-    get_ssl_context () override
+    get_ssl_context ()
     {
         return *port().context;
     }
 
-    bool plain_only() override
+    bool plain_only()
     {
         return port().protocol.count("wss") == 0;
     }
 
-    bool secure_only() override
+    bool secure_only()
     {
         return port().protocol.count("ws") == 0;
     }
@@ -482,7 +458,7 @@ public:
     {
         std::string reason;
 
-        if (! app_.serverOkay (reason))
+        if (!serverOkay (reason))
         {
             cpClient->set_body (
                 "<HTML><BODY>Server cannot accept clients: " +
@@ -492,9 +468,9 @@ public:
 
         cpClient->set_body (
             "<!DOCTYPE html><html><head><title>" + systemName () +
-            " Test page for rippled</title></head>" + "<body><h1>" +
-            systemName () + " Test</h1><p>This page shows rippled http(s) "
-            "connectivity is working.</p></body></html>");
+            " Test</title></head>" + "<body><h1>" + systemName () +
+            " Test</h1><p>This page shows http(s) connectivity is working."
+            "</p></body></html>");
         return true;
     }
 

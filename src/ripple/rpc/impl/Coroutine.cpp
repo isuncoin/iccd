@@ -20,62 +20,40 @@
 #include <BeastConfig.h>
 #include <ripple/rpc/Coroutine.h>
 #include <ripple/rpc/tests/TestOutputSuite.test.h>
-#include <iostream>
 
 namespace ripple {
 namespace RPC {
-namespace {
 
-using CoroutineType = Continuation;
-using BoostCoroutine = boost::coroutines::asymmetric_coroutine<CoroutineType>;
-using Pull = BoostCoroutine::pull_type;
-using Push = BoostCoroutine::push_type;
+using CoroutinePull = boost::coroutines::coroutine <void>::pull_type;
 
-void runOnCoroutineImpl(std::shared_ptr<Pull> pull)
+struct Coroutine::Impl : CoroutinePull
 {
-    while (*pull)
+    Impl (CoroutinePull&& p) : CoroutinePull (std::move(p)) {}
+};
+
+Coroutine::Coroutine (YieldFunction const& yieldFunction)
+{
+    CoroutinePull pull ([yieldFunction] (
+        boost::coroutines::coroutine <void>::push_type& push)
     {
-        (*pull)();
+        Yield yield = [&push] () { push(); };
+        yield ();
+        yieldFunction (yield);
+    });
 
-        if (! *pull)
-            return;
-
-        if (auto continuation = pull->get())
-        {
-            continuation ([pull] () { runOnCoroutineImpl(pull); });
-            return;
-        }
-    }
+    impl_ = std::make_shared<Impl> (std::move (pull));
 }
 
-} // namespace
+Coroutine::~Coroutine() = default;
 
-void runOnCoroutine(Coroutine const& coroutine)
+Coroutine::operator bool() const
 {
-    auto pullFunction = [coroutine] (Push& push)
-    {
-        Suspend suspend = [&push] (CoroutineType const& cbc)
-        {
-            if (push)
-                push (cbc);
-        };
-
-        // Run once doing nothing, to get the other side started.
-        suspend([] (Callback const& callback) { callback(); });
-
-        // Now run the coroutine.
-        coroutine(suspend);
-    };
-
-    runOnCoroutineImpl(std::make_shared<Pull>(pullFunction));
+    return bool (*impl_);
 }
 
-void runOnCoroutine(UseCoroutines useCoroutines, Coroutine const& coroutine)
+void Coroutine::operator()() const
 {
-    if (useCoroutines == UseCoroutines::yes)
-        runOnCoroutine(coroutine);
-    else
-        coroutine(dontSuspend);
+    (*impl_)();
 }
 
 } // RPC

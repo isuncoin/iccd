@@ -35,7 +35,7 @@ namespace ripple {
 // VFALCO TODO rename to SortedTxSet
 class CanonicalTXSet
 {
-private:
+public:
     class Key
     {
     public:
@@ -71,22 +71,21 @@ private:
         std::uint32_t mSeq;
     };
 
-public:
-    using iterator = std::map <Key, std::shared_ptr<STTx const>>::iterator;
-    using const_iterator = std::map <Key, std::shared_ptr<STTx const>>::const_iterator;
+    typedef std::map <Key, STTx::pointer>::iterator iterator;
+    typedef std::map <Key, STTx::pointer>::const_iterator const_iterator;
 
 public:
-    explicit CanonicalTXSet (LedgerHash const& saltHash)
-        : mSetHash (saltHash)
+    explicit CanonicalTXSet (LedgerHash const& lastClosedLedgerHash)
+        : mSetHash (lastClosedLedgerHash)
     {
     }
 
-    void insert (std::shared_ptr<STTx const> const& txn);
+    void push_back (STTx::ref txn);
 
     // VFALCO TODO remove this function
-    void reset (LedgerHash const& saltHash)
+    void reset (LedgerHash const& newLastClosedLedgerHash)
     {
-        mSetHash = saltHash;
+        mSetHash = newLastClosedLedgerHash;
 
         mMap.clear ();
     }
@@ -122,7 +121,7 @@ private:
     // Used to salt the accounts so people can't mine for low account numbers
     uint256 mSetHash;
 
-    std::map <Key, std::shared_ptr<STTx const>> mMap;
+    std::map <Key, STTx::pointer> mMap;
 };
 
 } // ripple

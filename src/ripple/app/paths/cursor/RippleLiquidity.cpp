@@ -18,7 +18,7 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/protocol/Quality.h>
+#include <ripple/app/book/Quality.h>
 #include <ripple/app/paths/cursor/RippleLiquidity.h>
 #include <ripple/basics/Log.h>
 
@@ -57,7 +57,7 @@ void rippleLiquidity (
     STAmount& saCurAct,  // <-> out limit including achieved so far: <-- <= -->
     std::uint64_t& uRateMax)
 {
-    JLOG (rippleCalc.j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "rippleLiquidity>"
         << " uQualityIn=" << uQualityIn
         << " uQualityOut=" << uQualityOut
@@ -84,7 +84,7 @@ void rippleLiquidity (
     // How much could possibly flow through the current node?
     const STAmount  saCur = saCurReq - saCurAct;
 
-    JLOG (rippleCalc.j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "rippleLiquidity: "
         << " bPrvUnlimited=" << bPrvUnlimited
         << " saPrv=" << saPrv
@@ -97,7 +97,7 @@ void rippleLiquidity (
     if (uQualityIn >= uQualityOut)
     {
         // You're getting better quality than you asked for, so no fee.
-        JLOG (rippleCalc.j_.trace) << "rippleLiquidity: No fees";
+        WriteLog (lsTRACE, RippleCalc) << "rippleLiquidity: No fees";
 
         // Only process if the current rate, 1:1, is not worse than the previous
         // rate, uRateMax - otherwise there is no flow.
@@ -127,7 +127,7 @@ void rippleLiquidity (
     else
     {
         // If the quality is worse than the previous
-        JLOG (rippleCalc.j_.trace) << "rippleLiquidity: Fee";
+        WriteLog (lsTRACE, RippleCalc) << "rippleLiquidity: Fee";
 
         std::uint64_t uRate = getRate (
             STAmount (uQualityOut), STAmount (uQualityIn));
@@ -146,7 +146,7 @@ void rippleLiquidity (
             STAmount saCurIn = divRound (
                 numerator, uQualityIn, {currency, uCurIssuerID}, true);
 
-            JLOG (rippleCalc.j_.trace)
+            WriteLog (lsTRACE, RippleCalc)
                 << "rippleLiquidity:"
                 << " bPrvUnlimited=" << bPrvUnlimited
                 << " saPrv=" << saPrv
@@ -157,7 +157,7 @@ void rippleLiquidity (
                 // All of current. Some amount of previous.
                 saCurAct += saCur;
                 saPrvAct += saCurIn;
-                JLOG (rippleCalc.j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "rippleLiquidity:3c:"
                     << " saCurReq=" << saCurReq
                     << " saPrvAct=" << saPrvAct;
@@ -179,7 +179,7 @@ void rippleLiquidity (
                 STAmount saCurOut = divRound (
                     numerator, uQualityOut, issue, true);
 
-                JLOG (rippleCalc.j_.trace)
+                WriteLog (lsTRACE, RippleCalc)
                     << "rippleLiquidity:4: saCurReq=" << saCurReq;
 
                 saCurAct += saCurOut;
@@ -190,7 +190,7 @@ void rippleLiquidity (
         }
     }
 
-    JLOG (rippleCalc.j_.trace)
+    WriteLog (lsTRACE, RippleCalc)
         << "rippleLiquidity<"
         << " uQualityIn=" << uQualityIn
         << " uQualityOut=" << uQualityOut
@@ -203,9 +203,9 @@ void rippleLiquidity (
 static
 std::uint32_t
 rippleQuality (
-    ReadView const& view,
-    AccountID const& destination,
-    AccountID const& source,
+    LedgerEntrySet& ledger,
+    Account const& destination,
+    Account const& source,
     Currency const& currency,
     SField const& sfLow,
     SField const& sfHigh)
@@ -214,8 +214,8 @@ rippleQuality (
 
     if (destination != source)
     {
-        auto const sleRippleState = view.read(
-            keylet::line(destination, source, currency));
+        SLE::pointer sleRippleState (ledger.entryCache (ltRIPPLE_STATE,
+            getRippleStateIndex (destination, source, currency)));
 
         // we should be able to assert(sleRippleState) here
 
@@ -237,23 +237,23 @@ rippleQuality (
 
 std::uint32_t
 quality_in (
-    ReadView const& view,
-    AccountID const& uToAccountID,
-    AccountID const& uFromAccountID,
+    LedgerEntrySet& ledger,
+    Account const& uToAccountID,
+    Account const& uFromAccountID,
     Currency const& currency)
 {
-    return rippleQuality (view, uToAccountID, uFromAccountID, currency,
+    return rippleQuality (ledger, uToAccountID, uFromAccountID, currency,
         sfLowQualityIn, sfHighQualityIn);
 }
 
 std::uint32_t
 quality_out (
-    ReadView const& view,
-    AccountID const& uToAccountID,
-    AccountID const& uFromAccountID,
+    LedgerEntrySet& ledger,
+    Account const& uToAccountID,
+    Account const& uFromAccountID,
     Currency const& currency)
 {
-    return rippleQuality (view, uToAccountID, uFromAccountID, currency,
+    return rippleQuality (ledger, uToAccountID, uFromAccountID, currency,
         sfLowQualityOut, sfHighQualityOut);
 }
 

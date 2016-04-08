@@ -35,29 +35,27 @@ class ServerHandlerImp
     , public HTTP::Handler
 {
 private:
-    Application& app_;
     Resource::Manager& m_resourceManager;
     beast::Journal m_journal;
+    JobQueue& m_jobQueue;
     NetworkOPs& m_networkOPs;
     std::unique_ptr<HTTP::Server> m_server;
     Setup setup_;
-    JobQueue& m_jobQueue;
     beast::insight::Counter rpc_requests_;
     beast::insight::Event rpc_io_;
     beast::insight::Event rpc_size_;
     beast::insight::Event rpc_time_;
 
 public:
-    ServerHandlerImp (Application& app, Stoppable& parent,
-        boost::asio::io_service& io_service, JobQueue& jobQueue,
-            NetworkOPs& networkOPs, Resource::Manager& resourceManager,
-                CollectorManager& cm);
+    ServerHandlerImp (Stoppable& parent, boost::asio::io_service& io_service,
+        JobQueue& jobQueue, NetworkOPs& networkOPs,
+            Resource::Manager& resourceManager, CollectorManager& cm);
 
     ~ServerHandlerImp();
 
 private:
     using Output = Json::Output;
-    using Suspend = RPC::Suspend;
+    using Yield = RPC::Yield;
 
     void
     setup (Setup const& setup, beast::Journal journal) override;
@@ -109,11 +107,11 @@ private:
     //--------------------------------------------------------------------------
 
     void
-    processSession (std::shared_ptr<HTTP::Session> const&, Suspend const&);
+    processSession (std::shared_ptr<HTTP::Session> const&, Yield const&);
 
     void
     processRequest (HTTP::Port const& port, std::string const& request,
-        beast::IP::Endpoint const& remoteIPAddress, Output&&, Suspend const&);
+        beast::IP::Endpoint const& remoteIPAddress, Output, Yield);
 
     //
     // PropertyStream

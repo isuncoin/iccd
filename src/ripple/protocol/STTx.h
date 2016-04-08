@@ -22,9 +22,7 @@
 
 #include <ripple/protocol/STObject.h>
 #include <ripple/protocol/TxFormats.h>
-#include <boost/container/flat_set.hpp>
 #include <boost/logic/tribool.hpp>
-#include <boost/optional.hpp>
 
 namespace ripple {
 
@@ -43,8 +41,8 @@ class STTx final
 public:
     static char const* getCountedObjectName () { return "STTx"; }
 
-    static std::size_t const minMultiSigners = 1;
-    static std::size_t const maxMultiSigners = 8;
+    typedef std::shared_ptr<STTx>        pointer;
+    typedef const std::shared_ptr<STTx>& ref;
 
 public:
     STTx () = delete;
@@ -53,7 +51,6 @@ public:
     STTx (STTx const& other) = default;
 
     explicit STTx (SerialIter& sit);
-    explicit STTx (SerialIter&& sit) : STTx(sit) {}
     explicit STTx (TxType type);
 
     explicit STTx (STObject&& object);
@@ -70,14 +67,14 @@ public:
         return emplace(n, buf, std::move(*this));
     }
 
-    // STObject functions.
+    // STObject functions
     SerializedTypeID getSType () const override
     {
         return STI_TRANSACTION;
     }
     std::string getFullText () const override;
 
-    // Outer transaction functions / signature functions.
+    // outer transaction functions / signature functions
     Blob getSignature () const;
 
     uint256 getSigningHash () const;
@@ -86,12 +83,25 @@ public:
     {
         return tx_type_;
     }
+    STAmount getTransactionFee () const
+    {
+        return getFieldAmount (sfFee);
+    }
+    void setTransactionFee (const STAmount & fee)
+    {
+        setFieldAmount (sfFee, fee);
+    }
 
+    RippleAddress getSourceAccount () const
+    {
+        return getFieldAccount (sfAccount);
+    }
     Blob getSigningPubKey () const
     {
         return getFieldVL (sfSigningPubKey);
     }
     void setSigningPubKey (const RippleAddress & naSignPubKey);
+    void setSourceAccount (const RippleAddress & naSource);
 
     std::uint32_t getSequence () const
     {
@@ -102,19 +112,35 @@ public:
         return setFieldU32 (sfSequence, seq);
     }
 
-    boost::container::flat_set<AccountID>
-    getMentionedAccounts() const;
+    std::vector<RippleAddress> getMentionedAccounts () const;
 
     uint256 getTransactionID () const;
 
-    Json::Value getJson (int options) const override;
-    Json::Value getJson (int options, bool binary) const;
+    virtual Json::Value getJson (int options) const override;
+    virtual Json::Value getJson (int options, bool binary) const;
 
     void sign (RippleAddress const& private_key);
 
-    bool checkSign(bool allowMultiSign) const;
+    bool checkSign () const;
 
-    // SQL Functions with metadata.
+    bool isKnownGood () const
+    {
+        return (sig_state_ == true);
+    }
+    bool isKnownBad () const
+    {
+        return (sig_state_ == false);
+    }
+    void setGood () const
+    {
+        sig_state_ = true;
+    }
+    void setBad () const
+    {
+        sig_state_ = false;
+    }
+
+    // SQL Functions with metadata
     static
     std::string const&
     getMetaSQLInsertReplaceHeader ();
@@ -129,24 +155,12 @@ public:
         std::string const& escapedMetaData) const;
 
 private:
-    bool checkSingleSign () const;
-    bool checkMultiSign () const;
-
-    boost::optional<uint256> tid_;
     TxType tx_type_;
+
+    mutable boost::tribool sig_state_;
 };
 
 bool passesLocalChecks (STObject const& st, std::string&);
-
-/** Sterilize a transaction.
-
-    The transaction is serialized and then deserialized,
-    ensuring that all equivalent transactions are in canonical
-    form. This also ensures that program metadata such as
-    the transaction's digest, are all computed.
-*/
-std::shared_ptr<STTx const>
-sterilize (STTx const& stx);
 
 } // ripple
 

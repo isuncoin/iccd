@@ -27,12 +27,12 @@
 #include <beast/utility/empty_base_optimization.h>
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/unordered_set.hpp>
-#include <algorithm>
+#include <beast/cxx14/algorithm.h> // <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
-#include <type_traits>
+#include <beast/cxx14/type_traits.h> // <type_traits>
 #include <utility>
 
 /*
@@ -249,7 +249,7 @@ private:
     };
 
     using list_type = typename boost::intrusive::make_list <element,
-        boost::intrusive::constant_time_size <false>>::type;
+        boost::intrusive::constant_time_size <false>>::type ;
 
     using cont_type = typename std::conditional <
         IsMulti,

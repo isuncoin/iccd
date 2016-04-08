@@ -18,22 +18,16 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/app/ledger/LedgerMaster.h>
-#include <ripple/app/misc/NetworkOPs.h>
-#include <ripple/json/json_value.h>
-#include <ripple/protocol/JsonFields.h>
-#include <ripple/rpc/Context.h>
 
 namespace ripple {
 
 Json::Value doLedgerClosed (RPC::Context& context)
 {
-    auto ledger = context.ledgerMaster.getClosedLedger ();
-    assert (ledger);
+    uint256 uLedger = context.netOps.getClosedLedgerHash ();
 
     Json::Value jvResult;
-    jvResult[jss::ledger_index] = ledger->info().seq;
-    jvResult[jss::ledger_hash] = to_string (ledger->getHash ());
+    jvResult[jss::ledger_index] = context.netOps.getLedgerID (uLedger);
+    jvResult[jss::ledger_hash] = to_string (uLedger);
 
     return jvResult;
 }

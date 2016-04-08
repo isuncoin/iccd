@@ -29,10 +29,9 @@ class FindPaths
 public:
     FindPaths (
         RippleLineCache::ref cache,
-        AccountID const& srcAccount,
-        AccountID const& dstAccount,
+        Account const& srcAccount,
+        Account const& dstAccount,
         STAmount const& dstAmount,
-        boost::optional<STAmount> const& srcAmount,
         /** searchLevel is the maximum search level allowed in an output path.
          */
         int searchLevel,
@@ -41,36 +40,31 @@ public:
         unsigned int const maxPaths);
     ~FindPaths();
 
-    /** The return value will have any additional paths found. Only
-        non-default paths without source or destination will be added. */
-    boost::optional<STPathSet>
-    findPathsForIssue (
+    bool findPathsForIssue (
         Issue const& issue,
 
-        /** Contains any paths you want to ensure are
-            included if still good. */
-        STPathSet const& paths,
+        /** On input, pathsInOut contains any paths you want to ensure are
+            included if still good.
+
+            On output, pathsInOut will have any additional paths found. Only
+            non-default paths without source or destination will be added. */
+        STPathSet& pathsInOut,
 
         /** On input, fullLiquidityPath must be an empty STPath.
 
             On output, if fullLiquidityPath is non-empty, it contains one extra
             path that can move the entire liquidity requested. */
-        STPath& fullLiquidityPath,
-
-        Application& app);
+        STPath& fullLiquidityPath);
 
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-/** The return value will have any additional paths found. Only
-    non-default paths without source or destination will be added. */
-boost::optional<STPathSet>
-findPathsForOneIssuer (
+bool findPathsForOneIssuer (
     RippleLineCache::ref cache,
-    AccountID const& srcAccount,
-    AccountID const& dstAccount,
+    Account const& srcAccount,
+    Account const& dstAccount,
     Issue const& srcIssue,
     STAmount const& dstAmount,
 
@@ -81,18 +75,18 @@ findPathsForOneIssuer (
         pathsOut. */
     unsigned int const maxPaths,
 
-    /** Contains any paths you want to ensure are included if
+    /** On input, pathsInOut contains any paths you want to ensure are included if
         still good.
-    */
-    STPathSet const& paths,
+
+        On output, pathsInOut will have any additional paths found. Only
+        non-default paths without source or destination will be added. */
+    STPathSet& pathsInOut,
 
     /** On input, fullLiquidityPath must be an empty STPath.
 
         On output, if fullLiquidityPath is non-empty, it contains one extra path
         that can move the entire liquidity requested. */
-    STPath& fullLiquidityPath,
-
-    Application& app);
+    STPath& fullLiquidityPath);
 
 void initializePathfinding ();
 

@@ -18,22 +18,18 @@
 //==============================================================================
 
 #include <BeastConfig.h>
-#include <ripple/core/DatabaseCon.h>
+#include <ripple/app/data/DatabaseCon.h>
 #include <ripple/app/main/Application.h>
 #include <ripple/app/main/LocalCredentials.h>
-#include <ripple/app/misc/UniqueNodeList.h>
+#include <ripple/app/peers/UniqueNodeList.h>
 #include <ripple/basics/Log.h>
 #include <ripple/basics/StringUtilities.h>
+#include <ripple/basics/make_SSLContext.h>
 #include <ripple/core/Config.h>
 #include <boost/optional.hpp>
 #include <iostream>
 
 namespace ripple {
-
-LocalCredentials::LocalCredentials(Application& app)
-    : app_ (app)
-{
-}
 
 void LocalCredentials::start ()
 {
@@ -49,16 +45,16 @@ void LocalCredentials::start ()
             throw std::runtime_error ("unable to retrieve new node identity.");
     }
 
-    if (!app_.config().QUIET)
+    if (!getConfig ().QUIET)
         std::cerr << "NodeIdentity: " << mNodePublicKey.humanNodePublic () << std::endl;
 
-    app_.getUNL ().start ();
+    getApp().getUNL ().start ();
 }
 
 // Retrieve network identity.
 bool LocalCredentials::nodeIdentityLoad ()
 {
-    auto db = app_.getWalletDB ().checkoutDb ();
+    auto db = getApp().getWalletDB ().checkoutDb ();
     bool        bSuccess    = false;
 
     boost::optional<std::string> pubKO, priKO;
@@ -76,10 +72,10 @@ bool LocalCredentials::nodeIdentityLoad ()
         bSuccess    = true;
     }
 
-    if (app_.config().NODE_PUB.isValid () && app_.config().NODE_PRIV.isValid ())
+    if (getConfig ().NODE_PUB.isValid () && getConfig ().NODE_PRIV.isValid ())
     {
-        mNodePublicKey = app_.config().NODE_PUB;
-        mNodePrivateKey = app_.config().NODE_PRIV;
+        mNodePublicKey = getConfig ().NODE_PUB;
+        mNodePrivateKey = getConfig ().NODE_PRIV;
     }
 
     return bSuccess;
@@ -88,7 +84,7 @@ bool LocalCredentials::nodeIdentityLoad ()
 // Create and store a network identity.
 bool LocalCredentials::nodeIdentityCreate ()
 {
-    if (!app_.config().QUIET)
+    if (!getConfig ().QUIET)
         std::cerr << "NodeIdentity: Creating." << std::endl;
 
     //
@@ -98,17 +94,23 @@ bool LocalCredentials::nodeIdentityCreate ()
     RippleAddress   naNodePublic    = RippleAddress::createNodePublic (naSeed);
     RippleAddress   naNodePrivate   = RippleAddress::createNodePrivate (naSeed);
 
+    // Make new key.
+    std::string strDh512 (getRawDHParams (512));
+
+    std::string strDh1024 = strDh512;
+
     //
     // Store the node information
     //
-    auto db = app_.getWalletDB ().checkoutDb ();
+    auto db = getApp().getWalletDB ().checkoutDb ();
 
-    *db << str (boost::format (
-        "INSERT INTO NodeIdentity (PublicKey,PrivateKey) VALUES ('%s','%s');")
-            % naNodePublic.humanNodePublic ()
-            % naNodePrivate.humanNodePrivate ());
+    *db << str (boost::format ("INSERT INTO NodeIdentity (PublicKey,PrivateKey,Dh512,Dh1024) VALUES ('%s','%s',%s,%s);")
+                         % naNodePublic.humanNodePublic ()
+                         % naNodePrivate.humanNodePrivate ()
+                         % sqlEscape (strDh512)
+                         % sqlEscape (strDh1024));
 
-    if (!app_.config().QUIET)
+    if (!getConfig ().QUIET)
         std::cerr << "NodeIdentity: Created." << std::endl;
 
     return true;

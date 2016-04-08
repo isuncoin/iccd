@@ -22,11 +22,11 @@
 
 #include <ripple/basics/UnorderedContainers.h>
 #include <ripple/basics/base_uint.h>
-#include <ripple/protocol/AccountID.h>
 
 namespace ripple {
 namespace detail {
 
+class AccountTag {};
 class CurrencyTag {};
 class DirectoryTag {};
 class NodeIDTag {};
@@ -35,30 +35,52 @@ class NodeIDTag {};
 
 /** Directory is an index into the directory of offer books.
     The last 64 bits of this are the quality. */
-using Directory = base_uint<256, detail::DirectoryTag>;
+typedef base_uint<256, detail::DirectoryTag> Directory;
+
+/** Account is a hash representing a specific account. */
+typedef base_uint<160, detail::AccountTag> Account;
 
 /** Currency is a hash representing a specific currency. */
-using Currency = base_uint<160, detail::CurrencyTag>;
+typedef base_uint<160, detail::CurrencyTag> Currency;
 
 /** NodeID is a 160-bit hash representing one node. */
-using NodeID = base_uint<160, detail::NodeIDTag>;
+typedef base_uint<160, detail::NodeIDTag> NodeID;
 
-/** XRP currency. */
-Currency const& xrpCurrency();
+typedef hash_set<Currency> CurrencySet;
+typedef hash_set<NodeID> NodeIDSet;
+
+/** A special account that's used as the "issuer" for ICC. */
+Account const& iccAccount();
+
+/** ICC currency. */
+Currency const& iccCurrency();
+
+/** A placeholder for empty accounts. */
+Account const& noAccount();
 
 /** A placeholder for empty currencies. */
 Currency const& noCurrency();
 
-/** We deliberately disallow the currency that looks like "XRP" because too
-    many people were using it instead of the correct XRP currency. */
+/** We deliberately disallow the currency that looks like "ICC" because too
+    many people were using it instead of the correct ICC currency. */
+
+
 Currency const& badCurrency();
 
-inline bool isXRP(Currency const& c)
+inline bool isICC(Currency const& c)
 {
     return c == zero;
 }
 
-/** Returns "", "XRP", or three letter ISO code. */
+inline bool isICC(Account const& c)
+{
+    return c == zero;
+}
+
+/** Returns a human-readable form of the account. */
+std::string to_string(Account const&);
+
+/** Returns "", "ICC", or three letter ISO code. */
 std::string to_string(Currency const& c);
 
 /** Tries to convert a string to a Currency, returns true on success. */
@@ -66,6 +88,16 @@ bool to_currency(Currency&, std::string const&);
 
 /** Tries to convert a string to a Currency, returns noCurrency() on failure. */
 Currency to_currency(std::string const&);
+
+/** Tries to convert a string to an Account representing an issuer, returns true
+ * on success. */
+bool to_issuer(Account&, std::string const&);
+
+inline std::ostream& operator<< (std::ostream& os, Account const& x)
+{
+    os << to_string (x);
+    return os;
+}
 
 inline std::ostream& operator<< (std::ostream& os, Currency const& x)
 {
@@ -76,6 +108,11 @@ inline std::ostream& operator<< (std::ostream& os, Currency const& x)
 } // ripple
 
 namespace std {
+
+template <>
+struct hash <ripple::Account> : ripple::Account::hasher
+{
+};
 
 template <>
 struct hash <ripple::Currency> : ripple::Currency::hasher
