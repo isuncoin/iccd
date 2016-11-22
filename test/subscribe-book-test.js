@@ -119,7 +119,7 @@ function matchOffers(expected, actual) {
 }
 
 function buildOfferFunctions($, offers) {
-  var functions = [];
+  functions = [];
   for(var i = 0; i < offers.length; ++i) {
     var offer = offers[i];
     functions.push(function(offer) {

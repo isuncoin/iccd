@@ -1,0 +1,136 @@
+2016-Nov-22 14:39:45 LedgerMaster:NFO Validation quorum: 1
+2016-Nov-22 14:39:45 Application:NFO Starting new Ledger
+2016-Nov-22 14:39:45 Application:NFO Root master seed: snoPBiXtMeMyMHUVTgbuqAfg1SUTb
+2016-Nov-22 14:39:45 Application:NFO Root account: iHb9CJAWyB4ij91VRWn96DkukG4bwdtyTh
+2016-Nov-22 14:39:45 LedgerMaster:NFO PushLedger: AB868A6CFEEC779C2FF845C0AF00A642259986AF40C01976A7F842B6918936C7
+2016-Nov-22 14:39:45 OrderBookDB:DBG Advancing from 0 to 3
+2016-Nov-22 14:39:45 OrderBookDB:DBG OrderBookDB::update>
+2016-Nov-22 14:39:45 OrderBookDB:DBG OrderBookDB::update< 0 books found
+2016-Nov-22 14:39:45 UniqueNodeList:DBG Validator fetch updated: not-a-date-time
+2016-Nov-22 14:39:45 UniqueNodeList:DBG Validator score updated: not-a-date-time
+2016-Nov-22 14:39:45 UniqueNodeList:NFO Bootstrapping UNL: loading from 'validators.txt'.
+2016-Nov-22 14:39:45 UniqueNodeList:WRN validators.txt not found: "validators.txt"
+2016-Nov-22 14:39:45 UniqueNodeList:NFO Bootstrapping UNL: loading from '"/home/chwang/iccd/build/rippled.cfg"'.
+2016-Nov-22 14:39:45 UniqueNodeList:NFO Node Public: n9J2ZN6gBPDtLWG54dZb9mYjEdgAykky3xGaeh5eb9sETuAfvXWy 
+2016-Nov-22 14:39:45 TaggedCache:DBG Validations target size set to 512
+2016-Nov-22 14:39:45 TaggedCache:DBG Validations target age set to 500000000000 nanoseconds
+2016-Nov-22 14:39:45 TaggedCache:DBG NodeStore target size set to 131072
+2016-Nov-22 14:39:45 TaggedCache:DBG NodeStore target age set to 120000000000 nanoseconds
+2016-Nov-22 14:39:45 TaggedCache:DBG LedgerCache target size set to 256
+2016-Nov-22 14:39:45 TaggedCache:DBG LedgerCache target age set to 180000000000 nanoseconds
+2016-Nov-22 14:39:45 TaggedCache:DBG LedgerEntryCache target size set to 16384
+2016-Nov-22 14:39:45 TaggedCache:DBG LedgerEntryCache target age set to 90000000000 nanoseconds
+2016-Nov-22 14:39:45 TaggedCache:DBG TreeNodeCache target size set to 512000
+2016-Nov-22 14:39:45 TaggedCache:DBG TreeNodeCache target age set to 90000000000 nanoseconds
+2016-Nov-22 14:39:45 Server:NFO Opened 'port_peer' (ip=0.0.0.0:19526, peer)
+2016-Nov-22 14:39:45 Server:NFO Opened 'port_rpc_admin' (ip=127.0.0.1:19527, admin IPs:127.0.0.1, http)
+2016-Nov-22 14:39:45 WebSocket:WRN Websocket version 0.2
+2016-Nov-22 14:39:45 WebSocket:WRN Websocket version 0.2
+2016-Nov-22 14:39:45 WebSocket:WRN Websocket: creating endpoint 'port_ws_admin' (ip=127.0.0.1:19529, admin IPs:127.0.0.1, ws)
+2016-Nov-22 14:39:45 WebSocket:WRN Websocket: listening on 'port_ws_admin' (ip=127.0.0.1:19529, admin IPs:127.0.0.1, ws)
+2016-Nov-22 14:39:45 WebSocket:WRN Websocket: creating endpoint 'port_ws_public' (ip=0.0.0.0:19528, wss)
+2016-Nov-22 14:39:45 WebSocket:WRN Websocket: listening on 'port_ws_public' (ip=0.0.0.0:19528, wss)
+2016-Nov-22 14:39:45 WebSocket:TRC Connection created: count is now: 1
+2016-Nov-22 14:39:45 UVL:NFO Opening /home/chwang/iccd/build/db/validators.sqlite
+2016-Nov-22 14:39:45 PeerFinder:NFO Opening database at '/home/chwang/iccd/build/db/peerfinder.sqlite'
+2016-Nov-22 14:39:46 PeerFinder:NFO Opened version 0 database
+2016-Nov-22 14:39:46 PeerFinder:NFO Updating database to version 4
+2016-Nov-22 14:39:46 Application:NFO Application starting. Build is 0.30.0-rc1-63-g879902e+.develop
+2016-Nov-22 14:39:46 LoadManager:DBG Starting
+2016-Nov-22 14:39:46 LedgerCleaner:DBG Started
+2016-Nov-22 14:39:46 LedgerCleaner:DBG Initializing
+2016-Nov-22 14:39:46 SNTPClient:TRC SNTP: Offset is -300, new system offset is -300
+2016-Nov-22 14:39:46 SNTPClient:TRC SNTP: Offset is -300, new system offset is -300
+2016-Nov-22 14:39:46 SNTPClient:TRC SNTP: Offset is -300, new system offset is -300
+2016-Nov-22 14:39:46 SNTPClient:TRC SNTP: Offset is -300, new system offset is -300
+2016-Nov-22 14:39:46 JobQueue:TRC Doing heartbeat job
+2016-Nov-22 14:39:46 LedgerMaster:DBG No validated ledger
+2016-Nov-22 14:39:46 NetworkOPs:NFO STATE->connected
+2016-Nov-22 14:39:46 NetworkOPs:NFO Node count (0) is sufficient.
+2016-Nov-22 14:39:46 LedgerMaster:DBG No validated ledger
+2016-Nov-22 14:39:46 NetworkOPs:TRC NetworkOPsImp::checkLastClosedLedger
+2016-Nov-22 14:39:46 NetworkOPs:TRC OurClosed:  87762FE6A55E23EA22BE8EE17961E39EB3B26DC58004288EABD443B119BE0CD7
+2016-Nov-22 14:39:46 NetworkOPs:TRC PrevClosed: AB868A6CFEEC779C2FF845C0AF00A642259986AF40C01976A7F842B6918936C7
+2016-Nov-22 14:39:46 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:46 NetworkOPs:DBG L: 87762FE6A55E23EA22BE8EE17961E39EB3B26DC58004288EABD443B119BE0CD7 t=0, n=0
+2016-Nov-22 14:39:46 NetworkOPs:NFO STATE->tracking
+2016-Nov-22 14:39:46 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:47 NetworkOPs:NFO STATE->full
+2016-Nov-22 14:39:47 NetworkOPs:NFO Consensus time for ledger 3
+2016-Nov-22 14:39:47 NetworkOPs:NFO  LCL is 87762FE6A55E23EA22BE8EE17961E39EB3B26DC58004288EABD443B119BE0CD7
+2016-Nov-22 14:39:47 Ledger:NFO Ledger not found: WHERE LedgerHash = '87762FE6A55E23EA22BE8EE17961E39EB3B26DC58004288EABD443B119BE0CD7'
+2016-Nov-22 14:39:47 LedgerConsensus:DBG Creating consensus object
+2016-Nov-22 14:39:47 LedgerConsensus:TRC LCL:87762FE6A55E23EA22BE8EE17961E39EB3B26DC58004288EABD443B119BE0CD7, ct=533140830
+2016-Nov-22 14:39:47 LedgerConsensus:NFO Entering consensus process, watching
+2016-Nov-22 14:39:47 NetworkOPs:DBG Initiating consensus engine
+2016-Nov-22 14:39:47 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:47 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:47 LedgerTiming:WRN CLC::shouldClose range Trans=no Prop: 0/0 Secs: -313000 (last: 15000)
+2016-Nov-22 14:39:47 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:47 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:47 LedgerConsensus:TRC send status change to peer
+2016-Nov-22 14:39:47 LedgerConsensus:NFO initial position 0000000000000000000000000000000000000000000000000000000000000000
+2016-Nov-22 14:39:47 LedgerConsensus:DBG Not ready to create disputes
+2016-Nov-22 14:39:48 JobQueue:TRC Doing heartbeat job
+2016-Nov-22 14:39:48 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:49 JobQueue:TRC Doing heartbeat job
+2016-Nov-22 14:39:49 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Checking for TX consensus: agree=0, disagree=0
+2016-Nov-22 14:39:49 LedgerTiming:TRC CLC::haveConsensus: prop=0/0 agree=0 validated=0 time=2002/15000
+2016-Nov-22 14:39:49 LedgerTiming:DBG normal consensus
+2016-Nov-22 14:39:49 LedgerConsensus:NFO Converge cutoff (0 participants)
+2016-Nov-22 14:39:49 JobQueue:TRC Doing acceptLedger job
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Report: Prop=no val=no corLCL=yes fail=no
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Report: Prev = 87762FE6A55E23EA22BE8EE17961E39EB3B26DC58004288EABD443B119BE0CD7:2
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Report: TxSt = 0000000000000000000000000000000000000000000000000000000000000000, close 533140500
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Applying consensus set transactions to the last closed ledger
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Pass: 0 Txns: 0 retriable
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Pass: 0 finished 0 changes
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Pass: 1 Txns: 0 final
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Pass: 1 finished 0 changes
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Flushed 2 account and 0transaction nodes
+2016-Nov-22 14:39:49 JobQueue:TRC Doing writeObjects job
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Consensus built new ledger
+2016-Nov-22 14:39:49 LedgerConsensus:DBG Report: NewL  = 746DDB23722316D8292625F8CD444765B30BB5E946429F325DFFEDFC1D8182CE:3
+2016-Nov-22 14:39:49 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:49 LedgerConsensus:TRC send status change to peer
+2016-Nov-22 14:39:49 LedgerConsensus:NFO CNF newLCL 746DDB23722316D8292625F8CD444765B30BB5E946429F325DFFEDFC1D8182CE
+2016-Nov-22 14:39:49 LedgerMaster:TRC Only 0 validations for 746DDB23722316D8292625F8CD444765B30BB5E946429F325DFFEDFC1D8182CE
+2016-Nov-22 14:39:49 NetworkOPs:WRN Large system time offset (-300).
+2016-Nov-22 14:39:49 Application:DBG Received signal: 2
+2016-Nov-22 14:39:49 Application:NFO Received shutdown request
+2016-Nov-22 14:39:49 Application:DBG Application stopping
+2016-Nov-22 14:39:49 Resolver:DBG Queued a stop request
+2016-Nov-22 14:39:49 Resolver:DBG Waiting to stop
+2016-Nov-22 14:39:49 Resolver:DBG Stopped
+2016-Nov-22 14:39:49 Validations:NFO Flushing validations
+2016-Nov-22 14:39:49 Validations:DBG Validations flushed
+2016-Nov-22 14:39:49 LoadManager:DBG Stopping
+2016-Nov-22 14:39:49 WebSocket:WRN Websocket: onStop 'port_ws_public' (ip=0.0.0.0:19528, wss)
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint is stopping cleanly
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint received signal to close all connections cleanly with code 1001 and reason 
+2016-Nov-22 14:39:49 WebSocket:WRN Websocket: onStop 'port_ws_admin' (ip=127.0.0.1:19529, admin IPs:127.0.0.1, ws)
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint is stopping cleanly
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint received signal to close all connections cleanly with code 1001 and reason 
+2016-Nov-22 14:39:49 LedgerCleaner:NFO Stopping
+2016-Nov-22 14:39:49 WebSocket:TRC terminate called from state: 0
+2016-Nov-22 14:39:49 WebSocket:TRC terminate removing connection
+2016-Nov-22 14:39:49 WebSocket:TRC Connection removed: count is now: 0
+2016-Nov-22 14:39:49 WebSocket:TRC terminate called from state: 0
+2016-Nov-22 14:39:49 WebSocket:TRC terminate removing connection
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint has reached zero connections in STOPPING state. Stopping io_service now.
+2016-Nov-22 14:39:49 WebSocket:TRC Connection removed: count is now: 0
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint is stopping immediately
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint has reached zero connections in STOPPING state. Stopping io_service now.
+2016-Nov-22 14:39:49 WebSocket:TRC Endpoint destructor called
+2016-Nov-22 14:39:49 WebSocket:DBG Endpoint is stopping immediately
+2016-Nov-22 14:39:49 WebSocket:TRC Endpoint destructor done
+2016-Nov-22 14:39:49 WebSocket:TRC Endpoint destructor called
+2016-Nov-22 14:39:49 WebSocket:TRC Endpoint destructor done
+2016-Nov-22 14:39:49 WebSocket:TRC terminate called from state: 0
+2016-Nov-22 14:39:49 WebSocket:TRC terminate called from state: 0
+2016-Nov-22 14:39:49 WebSocket:WRN Websocket: finished listening on 'port_ws_public' (ip=0.0.0.0:19528, wss)
+2016-Nov-22 14:39:49 WebSocket:WRN Websocket: stopped on 'port_ws_public' (ip=0.0.0.0:19528, wss)
+2016-Nov-22 14:39:49 WebSocket:WRN Websocket: finished listening on 'port_ws_admin' (ip=127.0.0.1:19529, admin IPs:127.0.0.1, ws)
+2016-Nov-22 14:39:49 WebSocket:WRN Websocket: stopped on 'port_ws_admin' (ip=127.0.0.1:19529, admin IPs:127.0.0.1, ws)
+2016-Nov-22 14:39:50 Application:NFO Done.

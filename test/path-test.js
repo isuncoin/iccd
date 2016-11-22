@@ -903,7 +903,6 @@ suite('More path finding', function() {
     //alice pays bob mtgoxAUD using XRP
     test("via gateway", function (done) {
       var self = this;
-      var seq_carol;
 
       async.waterfall([
                       function (callback) {
