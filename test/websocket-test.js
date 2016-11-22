@@ -49,7 +49,7 @@ suite('WebSocket connection', function() {
         // CLOSED
         done();
       });
-      alpha.disconnect();
+      alpha.connect(false);
     })
 
     alpha.connect();

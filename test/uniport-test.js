@@ -3,7 +3,7 @@
 var async       = require("async");
 var assert      = require('assert');
 var assert      = require('assert');
-var UInt160     = require('ripple-lib').UInt160;
+var UInt160     = require("ripple-lib").UInt160;
 var Remote      = require('ripple-lib').Remote;
 var Server      = require('ripple-lib').Server;
 var Request     = require('ripple-lib').Request;
@@ -34,7 +34,6 @@ var uniport_test_config = {
 
     // /can not issue/,
     // /http/
-    // /ws/
   ],
 
   skip_tests_not_matching : [
@@ -168,7 +167,9 @@ function test_websocket_admin_command (test_declaration,
   var wrong_user = test_declaration.wrong_user;
 
   var config = {
-    servers : [protocol + '://127.0.0.1:' + port_conf.port],
+    'websocket_ip':  "127.0.0.1",
+    'websocket_port': port_conf.port,
+    'websocket_ssl': protocol === 'wss',
     'trace' : uniport_test_config.remote_trace
   };
 
@@ -183,7 +184,8 @@ function test_websocket_admin_command (test_declaration,
       });
     });
   }
-  remote.connect( function () {
+
+  remote.once('connected', function () {
     var before_accept = remote._ledger_current_index;
     var request = new Request(remote, 'ledger_accept');
 
@@ -192,9 +194,9 @@ function test_websocket_admin_command (test_declaration,
                                   wrong_pass, wrong_user);
     }
 
-    request.callback(function (error, response){
+    request.request(function (error, response){
       // Disconnect
-      remote.disconnect();
+      remote.connect(false);
 
       function create_error (message) {
         var struct = {port_conf: port_conf,
@@ -235,6 +237,7 @@ function test_websocket_admin_command (test_declaration,
       done();
     });
   });
+  remote.connect();
 };
 
 function test_http_admin_command (test_declaration, protocol, conf, done)
@@ -324,7 +327,7 @@ function test_cant_connect (port_conf, protocol, done) {
   var type = protocol.slice(0, 2);
 
   if (type == 'ws') {
-    var done_once = one_invocation_function (done);
+    done_once = one_invocation_function (done);
 
     var WebSocket = Server.websocketConstructor();
     var ws_url = protocol+'://localhost:'+port_conf.port + '/';

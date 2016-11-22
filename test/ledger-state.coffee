@@ -11,6 +11,7 @@ assert      = require 'assert'
   Base
   UInt160
   Transaction
+  sjcl
 }           = require 'ripple-lib'
 testutils   = require './testutils'
 
@@ -26,8 +27,9 @@ exports.TestAccount = class TestAccount
     seed = Seed.from_json(passphrase)
     master_seed = seed.to_json()
     key_pair = seed.get_key()
-    pubKey = key_pair.pubKeyHex()
-    address = key_pair.accountID()
+    pubKey = sjcl.codec.hex.toBits key_pair.to_hex_pub()
+    address = Base.encode_check(0,
+              sjcl.codec.bytes.fromBits(@SHA256_RIPEMD160 pubKey))
     [address, master_seed, key_pair]
 
   constructor: (passphrase) ->
